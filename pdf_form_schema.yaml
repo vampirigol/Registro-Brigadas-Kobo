@@ -1,0 +1,106 @@
+# Esquema del formulario PDF - Red Adventista de Clínicas Comunitarias A.C
+# Los campos marcados con (x) o (X) indican selección. Texto manuscrito en campos designados.
+
+# === SECCIÓN 1: DATOS DEMOGRÁFICOS Y CONSULTA ===
+
+demograficos:
+  nacionalidad:
+    tipo: opcion  # Mexicana (x) / Otra especifique
+    opciones: ["Mexicana", "Otra"]
+    campo_otra: "Otra especifique"
+  fecha_nacimiento:
+    tipo: texto  # Formato DD/MM/AA
+  estatura:
+    tipo: numero  # Ej: 1.63
+  peso:
+    tipo: texto   # Ej: 60kg
+  estatus_migratorio:
+    tipo: texto   # Ej: M X
+  mujer_embarazada:
+    tipo: checkbox
+  lactancia:
+    tipo: checkbox
+  pertenece_minoria_etnica:
+    tipo: opcion  # SI ( ) NO (x)
+    opciones: ["SI", "NO"]
+    campo_especificar: "Especificar cual"
+
+consulta:
+  tipo_consulta:
+    tipo: opcion  # Consulta de primera vez (x) / Consulta de seguimiento / Atención única
+    opciones: ["primera_vez", "seguimiento", "atencion_unica"]
+  motivo_consulta:
+    tipo: texto   # Ej: Dolor Dental
+  insumos:
+    tipo: opcion  # SI ( ) NO (x)
+    opciones: ["SI", "NO"]
+  diagnostico:
+    tipo: texto   # Ej: Fractura
+  referencia_paciente:
+    tipo: opcion  # SI ( ) NO (x)
+    opciones: ["SI", "NO"]
+  motivo_referencia:
+    tipo: texto   # Si referencia=SI
+  # Caja de referencia: Lugar a donde se refiere, Segundo nivel, ONG, etc.
+  lugar_referencia:
+    tipo: opcion
+    opciones: ["Segundo nivel", "ONG", "Ministerio público", "Clínica", "Otro"]
+
+# === SECCIÓN 2: IDENTIFICACIÓN Y SERVICIOS POR ESPECIALIDAD ===
+# Esta tabla define las especialidades y determina cuántas veces se llena el formulario web
+
+identificacion:
+  nombre:
+    tipo: texto
+  edad:
+    tipo: numero
+  fecha:
+    tipo: texto   # Fecha de la consulta
+  sexo:
+    tipo: opcion  # M (x) H ( )
+    opciones: ["M", "H"]
+
+# ESPECIALIDADES: Si una especialidad tiene al menos un (x) marcado,
+# se genera UN formulario web para esa especialidad.
+# Ejemplo: Odontología marcada + Medicina General marcada = 2 formularios
+
+especialidades:
+  ODONTOLOGIA:
+    servicios:
+      - CONSULTA
+      - LIMPIEZA
+      - EXTRACCION
+      - KIT_LIMPIEZA_DENTAL
+    tiene_cantidad: ["KIT_LIMPIEZA_DENTAL"]  # Campo numérico junto al servicio
+  FISIOTERAPIA:
+    servicios:
+      - CONSULTA
+      - MEDICAMENTOS
+    tiene_cantidad: ["MEDICAMENTOS"]
+  MEDICINA_GENERAL:
+    servicios:
+      - CONSULTA
+      - MEDICAMENTOS
+    tiene_cantidad: ["MEDICAMENTOS"]
+  OFTALMOLOGIA:
+    servicios:
+      - CONSULTA
+      - LENTES
+      - MEDICAMENTOS
+    tiene_cantidad: ["MEDICAMENTOS"]
+  LABORATORIO_CLINICO:
+    servicios:
+      - GLUCOSA
+      - COLESTEROL
+      - TRIGLICERIDOS
+      - HDL
+  ENTREGA_INSUMOS:
+    servicios:
+      - ANTEOJOS
+      - KIT
+      - OTROS
+
+# Regla de repetición: N formularios = N especialidades/servicios con al menos un (x)
+# Ej: Odontología + Oftalmología marcadas → 2 registros
+# Regla práctica ADRA: si entrega de insumos es misma fecha que especialidad,
+# se registra junto (ej: anteojos en registro de Oftalmo)

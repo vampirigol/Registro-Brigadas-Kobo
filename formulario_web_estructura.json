@@ -1,0 +1,706 @@
+{
+  "fields": [
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/Fecha_de_atenci_n",
+      "type": "text",
+      "label": "Fecha de atención",
+      "group": "",
+      "short": "Fecha_de_atenci_n"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/CONS1",
+      "type": "radio",
+      "label": "Toma de consentimiento antes de iniciar la consulta",
+      "group": "",
+      "short": "CONS1"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Modalidad_de_la_atenci_n",
+      "type": "radio",
+      "label": "Modalidad de la atención",
+      "group": "Lugar de atención",
+      "short": "Modalidad_de_la_atenci_n"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/POC",
+      "type": "radio",
+      "label": "Estado",
+      "group": "Lugar de atención",
+      "short": "POC"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/BCS",
+      "type": "radio",
+      "label": "Lugar de atención: Baja California Sur",
+      "group": "Lugar de atención",
+      "short": "BCS"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/CHIH",
+      "type": "radio",
+      "label": "Lugar de atención: Chihuahua",
+      "group": "Lugar de atención",
+      "short": "CHIH"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Lugar_de_Atenci_n_Sonora",
+      "type": "radio",
+      "label": "Lugar de Atención: Sonora",
+      "group": "Lugar de atención",
+      "short": "Lugar_de_Atenci_n_Sonora"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Lugar_de_Atenci_n_Baja_Califo",
+      "type": "radio",
+      "label": "Lugar de Atención: Baja California",
+      "group": "Lugar de atención",
+      "short": "Lugar_de_Atenci_n_Baja_Califo"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Lugar_de_Atenci_n_Nuevo_Le_n",
+      "type": "radio",
+      "label": "Lugar de Atención: Nuevo León",
+      "group": "Lugar de atención",
+      "short": "Lugar_de_Atenci_n_Nuevo_Le_n"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/SCH",
+      "type": "select-one",
+      "label": "Lugar de atención: Escuelas",
+      "group": "Lugar de atención",
+      "short": "SCH"
+    },
+    {
+      "path": "59798.76732193007",
+      "type": "radio",
+      "label": "Lugar de atención: Escuelas",
+      "group": "Lugar de atención",
+      "short": "59798.76732193007"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/PLACE",
+      "type": "text",
+      "label": "Especificar Nombre del Colegio o Comunidad",
+      "group": "Lugar de atención",
+      "short": "PLACE"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/OTH",
+      "type": "text",
+      "label": "Especificar Lugar de Atención",
+      "group": "Lugar de atención",
+      "short": "OTH"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Ubicaci_n_geogr_fica_de_la_atenci_n",
+      "type": "text",
+      "label": "Ubicación geográfica de la atención",
+      "group": "Lugar de atención",
+      "short": "Ubicaci_n_geogr_fica_de_la_atenci_n"
+    },
+    {
+      "path": "search",
+      "type": "text",
+      "label": "Ubicación geográfica de la atención",
+      "group": "Lugar de atención",
+      "short": "search"
+    },
+    {
+      "path": "leaflet-base-layers_33",
+      "type": "radio",
+      "label": "Ubicación geográfica de la atención",
+      "group": "Lugar de atención",
+      "short": "leaflet-base-layers_33"
+    },
+    {
+      "path": "lat",
+      "type": "number",
+      "label": "Ubicación geográfica de la atención",
+      "group": "Lugar de atención",
+      "short": "lat"
+    },
+    {
+      "path": "long",
+      "type": "number",
+      "label": "Ubicación geográfica de la atención",
+      "group": "Lugar de atención",
+      "short": "long"
+    },
+    {
+      "path": "alt",
+      "type": "number",
+      "label": "Ubicación geográfica de la atención",
+      "group": "Lugar de atención",
+      "short": "alt"
+    },
+    {
+      "path": "acc",
+      "type": "number",
+      "label": "Ubicación geográfica de la atención",
+      "group": "Lugar de atención",
+      "short": "acc"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ua6kz91/followup",
+      "type": "radio",
+      "label": "¿Primera vez o seguimiento?",
+      "group": "Primera vez o Seguimiento",
+      "short": "followup"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ua6kz91/ASESPREV",
+      "type": "select-multiple",
+      "label": "¿Se le ha brindado asesoría en uno de los módulos el día de hoy?",
+      "group": "Primera vez o Seguimiento",
+      "short": "ASESPREV"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ua6kz91/Servicio_que_se_brinda",
+      "type": "radio",
+      "label": "Servicio que se brinda",
+      "group": "Primera vez o Seguimiento",
+      "short": "Servicio_que_se_brinda"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/NAME",
+      "type": "text",
+      "label": "Nombre del paciente",
+      "group": "Información Personal",
+      "short": "NAME"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/NAT",
+      "type": "select-one",
+      "label": "Nacionalidad",
+      "group": "Información Personal",
+      "short": "NAT"
+    },
+    {
+      "path": "46115.42176384088",
+      "type": "radio",
+      "label": "Nacionalidad",
+      "group": "Información Personal",
+      "short": "46115.42176384088"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/NATOT",
+      "type": "text",
+      "label": "Especificar",
+      "group": "Información Personal",
+      "short": "NATOT"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/Estado",
+      "type": "select-one",
+      "label": "Estado",
+      "group": "Información Personal",
+      "short": "Estado"
+    },
+    {
+      "path": "24741.76071650883",
+      "type": "radio",
+      "label": "Estado",
+      "group": "Información Personal",
+      "short": "24741.76071650883"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/_Pertenece_a_alguna_minor_a_t",
+      "type": "radio",
+      "label": "¿Pertenece a alguna minoría étnica?",
+      "group": "Información Personal",
+      "short": "_Pertenece_a_alguna_minor_a_t"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/Especificar_Minor_a_tnica",
+      "type": "text",
+      "label": "Especificar Minoría Étnica",
+      "group": "Información Personal",
+      "short": "Especificar_Minor_a_tnica"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/estatus_migra",
+      "type": "radio",
+      "label": "Estatus migratorio",
+      "group": "Información Personal",
+      "short": "estatus_migra"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/SEX",
+      "type": "radio",
+      "label": "Sexo",
+      "group": "Información Personal",
+      "short": "SEX"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/DOB",
+      "type": "text",
+      "label": "Fecha de nacimiento",
+      "group": "Información Personal",
+      "short": "DOB"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/ME_ML",
+      "type": "radio",
+      "label": "¿Mujer embarazada o en periodo de lactancia?",
+      "group": "Información Personal",
+      "short": "ME_ML"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/AGE",
+      "type": "number",
+      "label": "Edad",
+      "group": "Información Personal",
+      "short": "AGE"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/AGEMO",
+      "type": "number",
+      "label": "Edad en meses",
+      "group": "Información Personal",
+      "short": "AGEMO"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/HEI",
+      "type": "number",
+      "label": "Talla (cm)",
+      "group": "Toma de medidas y signos vitales",
+      "short": "HEI"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/WEI",
+      "type": "number",
+      "label": "Peso (kg)",
+      "group": "Toma de medidas y signos vitales",
+      "short": "WEI"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/IMC",
+      "type": "number",
+      "label": "IMC",
+      "group": "Toma de medidas y signos vitales",
+      "short": "IMC"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/Pesoprepreg",
+      "type": "number",
+      "label": "Peso pre gestacional",
+      "group": "Toma de medidas y signos vitales",
+      "short": "Pesoprepreg"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/SDG",
+      "type": "number",
+      "label": "Semanas de gestación",
+      "group": "Toma de medidas y signos vitales",
+      "short": "SDG"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/HPI",
+      "type": "textarea",
+      "label": "Padecimiento médico actual",
+      "group": "Toma de medidas y signos vitales",
+      "short": "HPI"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rd6ms59/DIS",
+      "type": "select-multiple",
+      "label": "Indicar si el paciente tiene alguna de las siguientes discapacidades",
+      "group": "Medicina General",
+      "short": "DIS"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rd6ms59/Especificar_discapacidad",
+      "type": "text",
+      "label": "Especificar discapacidad",
+      "group": "Medicina General",
+      "short": "Especificar_discapacidad"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rd6ms59/DX",
+      "type": "select-multiple",
+      "label": "Diagnósticos",
+      "group": "Medicina General",
+      "short": "DX"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rd6ms59/dxesp",
+      "type": "text",
+      "label": "Especificar",
+      "group": "Medicina General",
+      "short": "dxesp"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_mi31k30/Diagn_stico",
+      "type": "checkbox",
+      "label": "Diagnóstico",
+      "group": "Fisioterapia",
+      "short": "Diagn_stico"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_mi31k30/Especificar",
+      "type": "text",
+      "label": "Especificar",
+      "group": "Fisioterapia",
+      "short": "Especificar"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_mi31k30/Localizaci_n_de_la_lesi_n",
+      "type": "checkbox",
+      "label": "Localización de la lesión",
+      "group": "Fisioterapia",
+      "short": "Localizaci_n_de_la_lesi_n"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_mi31k30/Especificar_001",
+      "type": "text",
+      "label": "Especificar",
+      "group": "Fisioterapia",
+      "short": "Especificar_001"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_oc2gd73/Diagn_stico_001",
+      "type": "checkbox",
+      "label": "Diagnóstico",
+      "group": "Odontología",
+      "short": "Diagn_stico_001"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_oc2gd73/Especificar_002",
+      "type": "text",
+      "label": "Especificar",
+      "group": "Odontología",
+      "short": "Especificar_002"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/S_ntomas_que_presenta_a_la_fec",
+      "type": "checkbox",
+      "label": "Síntomas que presenta a la fecha de consulta",
+      "group": "Oftalmología",
+      "short": "S_ntomas_que_presenta_a_la_fec"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/Especifique_s_ntoma",
+      "type": "text",
+      "label": "Especifique síntoma",
+      "group": "Oftalmología",
+      "short": "Especifique_s_ntoma"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/_Ha_recibido_alg_n_diagn_stico",
+      "type": "checkbox",
+      "label": "¿Ha recibido algún diagnóstico previo?",
+      "group": "Oftalmología",
+      "short": "_Ha_recibido_alg_n_diagn_stico"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/Especifique_diagn_stico_previo",
+      "type": "text",
+      "label": "Especifique diagnóstico previo",
+      "group": "Oftalmología",
+      "short": "Especifique_diagn_stico_previo"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/Diagn_stico_002",
+      "type": "checkbox",
+      "label": "Diagnóstico Actual",
+      "group": "Oftalmología",
+      "short": "Diagn_stico_002"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/Otro_diagn_stico",
+      "type": "text",
+      "label": "Otro diagnóstico",
+      "group": "Oftalmología",
+      "short": "Otro_diagn_stico"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/_Se_realiza_procedimiento_odon",
+      "type": "radio",
+      "label": "¿Se realiza procedimiento odontológico?",
+      "group": "Tratamiento",
+      "short": "_Se_realiza_procedimiento_odon"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/_Qupe_procedimiento_se_realiza",
+      "type": "checkbox",
+      "label": "¿Qupe procedimiento se realiza?",
+      "group": "Tratamiento",
+      "short": "_Qupe_procedimiento_se_realiza"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Especificar_003",
+      "type": "text",
+      "label": "Especificar",
+      "group": "Tratamiento",
+      "short": "Especificar_003"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/entrega_tx",
+      "type": "radio",
+      "label": "¿Se hizo entrega de tratamiento/artículos al beneficiario o beneficiaria?",
+      "group": "Tratamiento",
+      "short": "entrega_tx"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/TX",
+      "type": "textarea",
+      "label": "Tratamiento",
+      "group": "Tratamiento",
+      "short": "TX"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/_Requiere_anteojos",
+      "type": "radio",
+      "label": "¿Requiere anteojos?",
+      "group": "Tratamiento",
+      "short": "_Requiere_anteojos"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Especifique_qu_se_entrega",
+      "type": "radio",
+      "label": "Especifique qué se entrega",
+      "group": "Tratamiento",
+      "short": "Especifique_qu_se_entrega"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Especificar_lo_que_se_entrega_",
+      "type": "text",
+      "label": "Especificar lo que se entrega al beneficiario",
+      "group": "Tratamiento",
+      "short": "Especificar_lo_que_se_entrega_"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/FE",
+      "type": "radio",
+      "label": "¿Se le dio suplementos que contengan hierro?",
+      "group": "Tratamiento",
+      "short": "FE"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/FA",
+      "type": "radio",
+      "label": "¿Se le dio suplementos que contengan ácido fólico?",
+      "group": "Tratamiento",
+      "short": "FA"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Unidades_entregadas",
+      "type": "number",
+      "label": "Unidades entregadas",
+      "group": "Tratamiento",
+      "short": "Unidades_entregadas"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Plan_de_Tratamiento",
+      "type": "text",
+      "label": "Plan de Tratamiento",
+      "group": "Tratamiento",
+      "short": "Plan_de_Tratamiento"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Fotograf_a_de_la_Rec_Acuse_de_recibi_etc",
+      "type": "file",
+      "label": "Fotografía de la Receta Médica, Plan de tratamiento, Acuse de recibi, etc",
+      "group": "Tratamiento",
+      "short": "Fotograf_a_de_la_Rec_Acuse_de_recibi_etc"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/REF",
+      "type": "radio",
+      "label": "¿Se hizo referencia?",
+      "group": "Referencias",
+      "short": "REF"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/REFORG",
+      "type": "radio",
+      "label": "¿A dónde?",
+      "group": "Referencias",
+      "short": "REFORG"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/REFSPEC",
+      "type": "text",
+      "label": "Especificar",
+      "group": "Referencias",
+      "short": "REFSPEC"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/MEDREF",
+      "type": "radio",
+      "label": "Motivo",
+      "group": "Referencias",
+      "short": "MEDREF"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/SPREFMOTMED",
+      "type": "text",
+      "label": "Especificar motivo de referencia",
+      "group": "Referencias",
+      "short": "SPREFMOTMED"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/CONS",
+      "type": "radio",
+      "label": "¿Se tomó consentimiento informado de forma verbal?",
+      "group": "",
+      "short": "CONS"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/CGR",
+      "type": "radio",
+      "label": "¿Quién estuvo presente en la consulta?",
+      "group": "",
+      "short": "CGR"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/start",
+      "type": "hidden",
+      "label": "",
+      "group": "",
+      "short": "start"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/end",
+      "type": "hidden",
+      "label": "",
+      "group": "",
+      "short": "end"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/meta/instanceID",
+      "type": "hidden",
+      "label": "",
+      "group": "",
+      "short": "instanceID"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/__version__",
+      "type": "hidden",
+      "label": "",
+      "group": "",
+      "short": "__version__"
+    },
+    {
+      "path": "/aD6FdrTDPaW4QzCLjmG7WE/formhub/uuid",
+      "type": "hidden",
+      "label": "",
+      "group": "",
+      "short": "uuid"
+    }
+  ],
+  "groups": {
+    "aD6FdrTDPaW4QzCLjmG7WE": [
+      "Fecha_de_atenci_n",
+      "CONS1",
+      "CONS",
+      "CGR",
+      "start",
+      "end",
+      "__version__"
+    ],
+    "group_nl0pw33": [
+      "Modalidad_de_la_atenci_n",
+      "POC",
+      "BCS",
+      "CHIH",
+      "Lugar_de_Atenci_n_Sonora",
+      "Lugar_de_Atenci_n_Baja_Califo",
+      "Lugar_de_Atenci_n_Nuevo_Le_n",
+      "SCH",
+      "PLACE",
+      "OTH",
+      "Ubicaci_n_geogr_fica_de_la_atenci_n"
+    ],
+    "_root": [
+      "59798.76732193007",
+      "search",
+      "leaflet-base-layers_33",
+      "lat",
+      "long",
+      "alt",
+      "acc",
+      "46115.42176384088",
+      "24741.76071650883"
+    ],
+    "group_ua6kz91": [
+      "followup",
+      "ASESPREV",
+      "Servicio_que_se_brinda"
+    ],
+    "group_py4vt65": [
+      "NAME",
+      "NAT",
+      "NATOT",
+      "Estado",
+      "_Pertenece_a_alguna_minor_a_t",
+      "Especificar_Minor_a_tnica",
+      "estatus_migra",
+      "SEX",
+      "DOB",
+      "ME_ML",
+      "AGE",
+      "AGEMO"
+    ],
+    "group_jt9yr10": [
+      "HEI",
+      "WEI",
+      "IMC",
+      "Pesoprepreg",
+      "SDG",
+      "HPI"
+    ],
+    "group_rd6ms59": [
+      "DIS",
+      "Especificar_discapacidad",
+      "DX",
+      "dxesp"
+    ],
+    "group_mi31k30": [
+      "Diagn_stico",
+      "Especificar",
+      "Localizaci_n_de_la_lesi_n",
+      "Especificar_001"
+    ],
+    "group_oc2gd73": [
+      "Diagn_stico_001",
+      "Especificar_002"
+    ],
+    "group_rw8yu96": [
+      "S_ntomas_que_presenta_a_la_fec",
+      "Especifique_s_ntoma",
+      "_Ha_recibido_alg_n_diagn_stico",
+      "Especifique_diagn_stico_previo",
+      "Diagn_stico_002",
+      "Otro_diagn_stico"
+    ],
+    "group_ic1bl54": [
+      "_Se_realiza_procedimiento_odon",
+      "_Qupe_procedimiento_se_realiza",
+      "Especificar_003",
+      "entrega_tx",
+      "TX",
+      "_Requiere_anteojos",
+      "Especifique_qu_se_entrega",
+      "Especificar_lo_que_se_entrega_",
+      "FE",
+      "FA",
+      "Unidades_entregadas",
+      "Plan_de_Tratamiento",
+      "Fotograf_a_de_la_Rec_Acuse_de_recibi_etc"
+    ],
+    "group_xi7cn52": [
+      "REF",
+      "REFORG",
+      "REFSPEC",
+      "MEDREF",
+      "SPREFMOTMED"
+    ],
+    "meta": [
+      "instanceID"
+    ],
+    "formhub": [
+      "uuid"
+    ]
+  }
+}

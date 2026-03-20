@@ -1,0 +1,12 @@
+.env
+.cursor/
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+logs/*
+!logs/.gitkeep
+mapping_discovered.yaml
+uploads/

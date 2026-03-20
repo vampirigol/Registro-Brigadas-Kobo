@@ -1,0 +1,96 @@
+# Mapeo: columnas internas (izquierda) → campos formulario KoboToolbox (derecha)
+# Las reglas de llenado en filling_rules.py producen estas columnas.
+# No cambies los paths de la derecha.
+
+# === Valores fijos (reglas de llenado) ===
+CONS1: "/aD6FdrTDPaW4QzCLjmG7WE/CONS1"
+CONS: "/aD6FdrTDPaW4QzCLjmG7WE/CONS"
+Modalidad_de_la_atenci_n: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Modalidad_de_la_atenci_n"
+NAT: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/NAT"
+NATOT: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/NATOT"
+_Pertenece_a_alguna_minor_a_t: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/_Pertenece_a_alguna_minor_a_t"
+ASESPREV: "/aD6FdrTDPaW4QzCLjmG7WE/group_ua6kz91/ASESPREV"
+
+# === Lugar de atención ===
+Fecha_de_atenci_n: "/aD6FdrTDPaW4QzCLjmG7WE/Fecha_de_atenci_n"
+POC: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/POC"
+
+# Sub-campos de Lugar de Atención (condicionales según Estado/POC seleccionado)
+# Baja California Sur → BCS radio
+BCS: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/BCS"
+# Baja California → Lugar_de_Atenci_n_Baja_Califo radio
+Lugar_de_Atenci_n_Baja_Califo: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Lugar_de_Atenci_n_Baja_Califo"
+# Chihuahua → CHIH radio
+CHIH: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/CHIH"
+# Nuevo León → Lugar_de_Atenci_n_Nuevo_Le_n radio
+Lugar_de_Atenci_n_Nuevo_Le_n: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Lugar_de_Atenci_n_Nuevo_Le_n"
+# Sonora → Lugar_de_Atenci_n_Sonora radio
+Lugar_de_Atenci_n_Sonora: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Lugar_de_Atenci_n_Sonora"
+# Campos de texto para cuando se selecciona "Otro" en cualquier Lugar de Atención
+SCH: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/SCH"
+PLACE: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/PLACE"
+OTH: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/OTH"
+Ubicaci_n_geogr_fica_de_la_atenci_n: "/aD6FdrTDPaW4QzCLjmG7WE/group_nl0pw33/Ubicaci_n_geogr_fica_de_la_atenci_n"
+
+# === Primera vez / Servicio ===
+followup: "/aD6FdrTDPaW4QzCLjmG7WE/group_ua6kz91/followup"
+Servicio_que_se_brinda: "/aD6FdrTDPaW4QzCLjmG7WE/group_ua6kz91/Servicio_que_se_brinda"
+
+# === Información personal ===
+NAME: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/NAME"
+Estado: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/Estado"
+SEX: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/SEX"
+DOB: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/DOB"
+AGE: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/AGE"
+
+# === Medidas y signos vitales ===
+HEI: "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/HEI"
+WEI: "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/WEI"
+HPI: "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/HPI"
+
+# === Medicina General ===
+DIS: "/aD6FdrTDPaW4QzCLjmG7WE/group_rd6ms59/DIS"
+Especificar_discapacidad: "/aD6FdrTDPaW4QzCLjmG7WE/group_rd6ms59/Especificar_discapacidad"
+DX: "/aD6FdrTDPaW4QzCLjmG7WE/group_rd6ms59/DX"
+dxesp: "/aD6FdrTDPaW4QzCLjmG7WE/group_rd6ms59/dxesp"
+
+# === Tratamiento ===
+entrega_tx: "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/entrega_tx"
+TX: "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/TX"
+Especificar_lo_que_se_entrega_: "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Especificar_lo_que_se_entrega_"
+Especifique_qu_se_entrega: "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Especifique_qu_se_entrega"
+Unidades_entregadas: "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Unidades_entregadas"
+Plan_de_Tratamiento: "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/Plan_de_Tratamiento"
+
+# === Fisioterapia (condicional cuando Servicio=Fisioterapia) ===
+Diagn_stico: "/aD6FdrTDPaW4QzCLjmG7WE/group_mi31k30/Diagn_stico"
+Especificar: "/aD6FdrTDPaW4QzCLjmG7WE/group_mi31k30/Especificar"
+Localizaci_n_de_la_lesi_n: "/aD6FdrTDPaW4QzCLjmG7WE/group_mi31k30/Localizaci_n_de_la_lesi_n"
+Especificar_001: "/aD6FdrTDPaW4QzCLjmG7WE/group_mi31k30/Especificar_001"
+
+# === Referencias ===
+REF: "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/REF"
+REFORG: "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/REFORG"
+REFSPEC: "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/REFSPEC"
+MEDREF: "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/MEDREF"
+SPREFMOTMED: "/aD6FdrTDPaW4QzCLjmG7WE/group_xi7cn52/SPREFMOTMED"
+
+# === Odontología (group_oc2gd73, condicional cuando Servicio=Dental) ===
+Diagn_stico_001: "/aD6FdrTDPaW4QzCLjmG7WE/group_oc2gd73/Diagn_stico_001"
+Especificar_002: "/aD6FdrTDPaW4QzCLjmG7WE/group_oc2gd73/Especificar_002"
+_Se_realiza_procedimiento_odon: "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/_Se_realiza_procedimiento_odon"
+_Qupe_procedimiento_se_realiza: "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/_Qupe_procedimiento_se_realiza"
+
+# === Oftalmología (group_rw8yu96, condicional cuando ASESPREV=Oftalmología) ===
+S_ntomas_que_presenta_a_la_fec: "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/S_ntomas_que_presenta_a_la_fec"
+Especifique_s_ntoma: "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/Especifique_s_ntoma"
+_Ha_recibido_alg_n_diagn_stico: "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/_Ha_recibido_alg_n_diagn_stico"
+Especifique_diagn_stico_previo: "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/Especifique_diagn_stico_previo"
+Diagn_stico_002: "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/Diagn_stico_002"
+Otro_diagn_stico: "/aD6FdrTDPaW4QzCLjmG7WE/group_rw8yu96/Otro_diagn_stico"
+_Requiere_anteojos: "/aD6FdrTDPaW4QzCLjmG7WE/group_ic1bl54/_Requiere_anteojos"
+
+# === Consentimiento final, cuidador, estatus ===
+CGR: "/aD6FdrTDPaW4QzCLjmG7WE/CGR"
+estatus_migra: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/estatus_migra"
+ME_ML: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/ME_ML"
