@@ -9,6 +9,7 @@ Servidor Flask para el frontend de carga masiva.
 import json
 import logging
 import multiprocessing
+import multiprocessing.synchronize as mp_sync
 import os
 import subprocess
 import sys
@@ -51,7 +52,7 @@ run_status = {"status": "idle"}
 run_lock = threading.Lock()
 # Proceso hijo que ejecuta run_carga (Playwright fuera del hilo de Gunicorn)
 carga_proc: multiprocessing.Process | None = None
-carga_stop_mp: multiprocessing.synchronize.Event | None = None
+carga_stop_mp: mp_sync.Event | None = None
 
 
 def allowed_file(filename: str) -> bool:
