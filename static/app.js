@@ -603,8 +603,13 @@
         }
         if (data.stats) updateStats(data.stats);
         if (data.row != null && data.total != null) {
-          const pct = Math.round((data.row / data.total) * 100);
-          setProgress(pct, 'Fila ' + data.row + ' / ' + data.total);
+          if (data.event === 'row_start') {
+            var pctStart = Math.round(((data.row - 1) / data.total) * 100);
+            setProgress(pctStart, 'Llenando fila ' + data.row + ' / ' + data.total + '…');
+          } else {
+            var pct = Math.round((data.row / data.total) * 100);
+            setProgress(pct, 'Fila ' + data.row + ' / ' + data.total);
+          }
         }
         if (data.event === 'waiting_for_confirm') {
           addLog('Fila ' + (data.row || '') + ' cargada. Revisa el formulario y valida.', 'info');

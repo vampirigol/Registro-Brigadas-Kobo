@@ -222,6 +222,15 @@ def run_carga(
             record = apply_rules(record, on_missing=None)
             stats["total"] += 1
 
+            name_preview = record.get("NAME", "")[:30] or f"fila {row_index + 1}"
+            emit({
+                "event": "row_start",
+                "row": current_step,
+                "total": total_steps,
+                "excel_row": row_index + 1,
+                "message": f"Enviando fila {row_index + 1}/{total_steps}: {name_preview}…",
+            })
+
             ok, msg = False, ""
             # Retry con backoff exponencial: hasta 3 intentos (1s, 2s)
             for attempt in range(3):
@@ -327,6 +336,16 @@ def run_carga(
             # Aplicar reglas de llenado (valores fijos, transformaciones)
             record = apply_rules(record, on_missing=None)
             stats["total"] += 1
+
+            name_preview = record.get("NAME", "")[:30] or f"fila {row_index + 1}"
+            emit({
+                "event": "row_start",
+                "row": current_step,
+                "total": total_steps,
+                "excel_row": row_index + 1,
+                "message": f"Llenando fila {row_index + 1}/{total_steps}: {name_preview}…",
+            })
+
             success = False
             last_error = None
             for attempt in range(2):
