@@ -1,19 +1,48 @@
 """
-Ejecuta run_carga en un proceso hijo (multiprocessing 'spawn').
+Ejecuta run_carga en un proceso separado (subproceso `python -m runner_worker`).
 
-Evita el error de Playwright: "Sync API inside the asyncio loop" cuando el servidor
-corre bajo Gunicorn con worker gthread (hilos con bucle asyncio).
+Evita el error de Playwright: "Sync API inside the asyncio loop" bajo Gunicorn/gthread,
+usando un intérprete Python nuevo sin el bucle asyncio del worker WSGI.
+
+También soportaba multiprocessing.spawn; el subproceso es más fiable en Docker/Railway.
 """
 
 from __future__ import annotations
 
-import multiprocessing
+import json
 import os
+import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 
-def worker_main(job: dict[str, Any], progress_q: multiprocessing.Queue, stop_ev: multiprocessing.Event) -> None:
+class ProgressSink(Protocol):
+    def put(self, obj: dict) -> None: ...
+
+
+class StopLike(Protocol):
+    def is_set(self) -> bool: ...
+
+
+class StopFileFlag:
+    """Parada cooperativa: el padre crea el fichero al pedir stop."""
+
+    def __init__(self, path: str) -> None:
+        self._path = Path(path)
+        self._path.unlink(missing_ok=True)
+
+    def is_set(self) -> bool:
+        return self._path.exists()
+
+
+class StdoutProgressSink:
+    """Una línea JSON por evento (consumida por el padre vía subprocess.PIPE)."""
+
+    def put(self, evt: dict) -> None:
+        print(json.dumps(evt, ensure_ascii=False), flush=True)
+
+
+def worker_main(job: dict[str, Any], progress_q: ProgressSink, stop_ev: StopLike) -> None:
     os.environ["KOBO_CONFIRM_FILE"] = job["confirm_file"]
 
     from config import APP_URL, FORM_URL, USE_DIRECT_FORM_URL
@@ -72,3 +101,21 @@ def worker_main(job: dict[str, Any], progress_q: multiprocessing.Queue, stop_ev:
         use_api=use_api,
         stop_event=stop_ev,
     )
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        print("Uso: python -m runner_worker <ruta_job.json>", file=sys.stderr)
+        sys.exit(2)
+    job_path = Path(sys.argv[1])
+    job = json.loads(job_path.read_text(encoding="utf-8"))
+    stop_path = job.get("stop_file")
+    if not stop_path:
+        print("job.json debe incluir stop_file", file=sys.stderr)
+        sys.exit(2)
+    stop_ev = StopFileFlag(str(stop_path))
+    worker_main(job, StdoutProgressSink(), stop_ev)
+
+
+if __name__ == "__main__":
+    main()

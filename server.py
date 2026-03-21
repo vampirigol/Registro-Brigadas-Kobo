@@ -8,8 +8,6 @@ Servidor Flask para el frontend de carga masiva.
 
 import json
 import logging
-import multiprocessing
-import multiprocessing.synchronize as mp_sync
 import os
 import subprocess
 import sys
@@ -50,9 +48,9 @@ current_pdf_path: Path | None = None
 # Estado: "idle" | "running"
 run_status = {"status": "idle"}
 run_lock = threading.Lock()
-# Proceso hijo que ejecuta run_carga (Playwright fuera del hilo de Gunicorn)
-carga_proc: multiprocessing.Process | None = None
-carga_stop_mp: mp_sync.Event | None = None
+# Subproceso que ejecuta run_carga (intérprete limpio, sin asyncio de Gunicorn)
+carga_subprocess: subprocess.Popen | None = None
+carga_stop_path: str | None = None
 
 
 def allowed_file(filename: str) -> bool:
@@ -374,7 +372,7 @@ def start():
                 source="default",
             )
 
-    global carga_proc, carga_stop_mp
+    global carga_subprocess, carga_stop_path
 
     while not progress_queue.empty():
         try:
@@ -382,17 +380,20 @@ def start():
         except Empty:
             break
 
-    fd, confirm_path = tempfile.mkstemp(prefix="kobo_confirm_", suffix=".txt", text=True)
-    os.close(fd)
-    os.environ["KOBO_CONFIRM_FILE"] = confirm_path
+    fd_confirm, confirm_path = tempfile.mkstemp(prefix="kobo_confirm_", suffix=".txt", text=True)
+    os.close(fd_confirm)
+    fd_stop, stop_path = tempfile.mkstemp(prefix="kobo_stop_", suffix=".flag", text=True)
+    os.close(fd_stop)
+    try:
+        Path(stop_path).unlink(missing_ok=True)
+    except OSError:
+        pass
 
-    ctx = multiprocessing.get_context("spawn")
-    progress_mp = ctx.Queue()
-    stop_ev = ctx.Event()
-    carga_stop_mp = stop_ev
+    os.environ["KOBO_CONFIRM_FILE"] = confirm_path
 
     job = {
         "confirm_file": confirm_path,
+        "stop_file": stop_path,
         "excel_path": str(current_excel_path),
         "wait_for_confirm": wait_for_confirm,
         "auto_open_window": auto_open_window,
@@ -403,42 +404,81 @@ def start():
         "start_row": start_row,
     }
 
-    from runner_worker import worker_main
+    fd_job, job_path = tempfile.mkstemp(prefix="kobo_job_", suffix=".json", text=True)
+    with os.fdopen(fd_job, "w", encoding="utf-8") as jf:
+        json.dump(job, jf, ensure_ascii=False)
 
-    carga_proc = ctx.Process(target=worker_main, args=(job, progress_mp, stop_ev))
+    env = os.environ.copy()
+    carga_stop_path = stop_path
+    carga_subprocess = subprocess.Popen(
+        [sys.executable, "-m", "runner_worker", job_path],
+        cwd=str(PROJECT_ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        bufsize=1,
+    )
     with run_lock:
         run_status["status"] = "running"
-    carga_proc.start()
 
     def drain_and_finalize() -> None:
-        global carga_proc, carga_stop_mp
+        global carga_subprocess, carga_stop_path
+        proc = carga_subprocess
         try:
-            while True:
+            if proc is None or proc.stdout is None:
+                return
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
                 try:
-                    evt = progress_mp.get(timeout=1.0)
-                    progress_queue.put(evt)
-                    if evt.get("event") == "done":
-                        break
-                except Empty:
-                    if carga_proc is not None and not carga_proc.is_alive():
-                        # Proceso terminó sin evento done (crash)
-                        progress_queue.put({
-                            "event": "error",
-                            "message": "El proceso de carga terminó de forma inesperada.",
-                        })
-                        break
+                    evt = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                progress_queue.put(evt)
+                # No hacer break al ver "done": hay que leer hasta EOF o el pipe se llena y el hijo bloquea.
+            try:
+                proc.wait(timeout=360)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=15)
+                except Exception:
+                    pass
+            if proc.returncode not in (0, None):
+                err = (proc.stderr.read() if proc.stderr else "") or ""
+                err_tail = err[-4000:]
+                progress_queue.put({
+                    "event": "error",
+                    "message": f"El proceso de carga terminó con código {proc.returncode}. {err_tail}",
+                })
+        except Exception as e:
+            progress_queue.put({"event": "error", "message": str(e)})
         finally:
-            if carga_proc is not None:
-                carga_proc.join(timeout=360)
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=15)
+                except Exception:
+                    pass
             os.environ.pop("KOBO_CONFIRM_FILE", None)
             try:
                 Path(confirm_path).unlink(missing_ok=True)
             except OSError:
                 pass
+            try:
+                Path(stop_path).unlink(missing_ok=True)
+            except OSError:
+                pass
+            try:
+                Path(job_path).unlink(missing_ok=True)
+            except OSError:
+                pass
             with run_lock:
                 run_status["status"] = "idle"
-            carga_proc = None
-            carga_stop_mp = None
+            carga_subprocess = None
+            carga_stop_path = None
 
     threading.Thread(target=drain_and_finalize, daemon=True).start()
     return jsonify({
@@ -452,8 +492,11 @@ def start():
 @app.route("/api/stop", methods=["POST"])
 def stop_carga():
     """Señala al proceso de carga que debe detenerse."""
-    if carga_stop_mp is not None:
-        carga_stop_mp.set()
+    if carga_stop_path:
+        try:
+            Path(carga_stop_path).write_text("1", encoding="utf-8")
+        except OSError:
+            pass
     return jsonify({"ok": True, "message": "Señal de parada enviada. La carga se detendrá al terminar la fila actual."})
 
 
@@ -479,11 +522,14 @@ def progress_sse():
 @app.route("/api/reset-status", methods=["POST"])
 def reset_status():
     """Resetea el estado si quedó bloqueado en 'running'."""
-    global run_status, carga_proc, carga_stop_mp
+    global run_status, carga_subprocess, carga_stop_path
     with run_lock:
         run_status["status"] = "idle"
-    if carga_stop_mp is not None:
-        carga_stop_mp.clear()
+    if carga_stop_path:
+        try:
+            Path(carga_stop_path).unlink(missing_ok=True)
+        except OSError:
+            pass
     return jsonify({"ok": True})
 
 
