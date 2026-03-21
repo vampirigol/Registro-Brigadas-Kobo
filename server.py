@@ -48,9 +48,11 @@ current_pdf_path: Path | None = None
 # Estado: "idle" | "running"
 run_status = {"status": "idle"}
 run_lock = threading.Lock()
-# Subproceso que ejecuta run_carga (intérprete limpio, sin asyncio de Gunicorn)
+# Subproceso (Gunicorn) o evento (local) para la carga en curso
 carga_subprocess: subprocess.Popen | None = None
 carga_stop_path: str | None = None
+# Evento para detener la carga en modo thread (local)
+stop_event = threading.Event()
 
 
 def allowed_file(filename: str) -> bool:
@@ -372,6 +374,103 @@ def start():
                 source="default",
             )
 
+    use_subprocess = "gunicorn" in sys.modules
+
+    if use_subprocess:
+        _start_via_subprocess(
+            current_excel_path, wait_for_confirm, auto_open_window,
+            open_form_in_page, use_api, defaults, row_indices, start_row,
+        )
+    else:
+        _start_via_thread(
+            current_excel_path, wait_for_confirm, auto_open_window,
+            open_form_in_page, use_api, defaults, row_indices, start_row,
+        )
+    return jsonify({
+        "ok": True,
+        "message": "Carga iniciada. Observa el progreso abajo." + (
+            " Valida cada fila en el formulario." if wait_for_confirm else " Envío automático."
+        ),
+    })
+
+
+def _start_via_thread(
+    excel_path, wait_for_confirm, auto_open_window,
+    open_form_in_page, use_api, defaults, row_indices, start_row,
+):
+    """Modo local (Flask dev server): thread que comparte browser en memoria."""
+    stop_event.clear()
+
+    def run():
+        from runner import run_carga
+        from shared_browser import get_shared_page, set_shared_page
+        from form_filler import FormFiller
+
+        while not progress_queue.empty():
+            try:
+                progress_queue.get_nowait()
+            except Empty:
+                break
+
+        if not use_api and auto_open_window:
+            use_headless = open_form_in_page and not wait_for_confirm
+            try:
+                existing = get_shared_page()
+                if not existing:
+                    filler_temp = FormFiller()
+                    filler_temp.start(headless=use_headless)
+                    if filler_temp._page:
+                        initial_url = FORM_URL if USE_DIRECT_FORM_URL else APP_URL
+                        filler_temp._page.goto(
+                            initial_url,
+                            wait_until="networkidle" if USE_DIRECT_FORM_URL else "domcontentloaded",
+                            timeout=60000 if USE_DIRECT_FORM_URL else 20000,
+                        )
+                        set_shared_page(
+                            filler_temp._page, filler_temp._playwright,
+                            filler_temp._browser, filler_temp._context,
+                        )
+                        progress_queue.put({
+                            "event": "browser_ready",
+                            "message": "Ventana abierta automáticamente." if not use_headless
+                            else "Formulario en el panel derecho. Llenado en segundo plano.",
+                        })
+            except Exception as e:
+                progress_queue.put({"event": "info", "message": f"No se pudo abrir navegador: {e}"})
+
+        with run_lock:
+            run_status["status"] = "running"
+        try:
+            def on_progress(evt: dict):
+                progress_queue.put(evt)
+            run_headless = open_form_in_page and not wait_for_confirm
+            run_carga(
+                excel_path=excel_path,
+                progress_callback=on_progress,
+                headless=run_headless,
+                start_row=start_row,
+                wait_for_user_confirm=wait_for_confirm,
+                defaults=defaults,
+                row_indices=row_indices,
+                use_api=use_api,
+                stop_event=stop_event,
+            )
+        except Exception as e:
+            progress_queue.put({"event": "error", "message": str(e)})
+        finally:
+            with run_lock:
+                run_status["status"] = "idle"
+
+    thread = threading.Thread(target=run)
+    thread.daemon = True
+    thread.start()
+
+
+def _start_via_subprocess(
+    excel_path, wait_for_confirm, auto_open_window,
+    open_form_in_page, use_api, defaults, row_indices, start_row,
+):
+    """Modo Gunicorn/Railway: subprocess aislado sin asyncio."""
     global carga_subprocess, carga_stop_path
 
     while not progress_queue.empty():
@@ -394,7 +493,7 @@ def start():
     job = {
         "confirm_file": confirm_path,
         "stop_file": stop_path,
-        "excel_path": str(current_excel_path),
+        "excel_path": str(excel_path),
         "wait_for_confirm": wait_for_confirm,
         "auto_open_window": auto_open_window,
         "open_form_in_page": open_form_in_page,
@@ -437,7 +536,6 @@ def start():
                 except json.JSONDecodeError:
                     continue
                 progress_queue.put(evt)
-                # No hacer break al ver "done": hay que leer hasta EOF o el pipe se llena y el hijo bloquea.
             try:
                 proc.wait(timeout=360)
             except subprocess.TimeoutExpired:
@@ -463,30 +561,17 @@ def start():
                 except Exception:
                     pass
             os.environ.pop("KOBO_CONFIRM_FILE", None)
-            try:
-                Path(confirm_path).unlink(missing_ok=True)
-            except OSError:
-                pass
-            try:
-                Path(stop_path).unlink(missing_ok=True)
-            except OSError:
-                pass
-            try:
-                Path(job_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+            for p in (confirm_path, stop_path, job_path):
+                try:
+                    Path(p).unlink(missing_ok=True)
+                except OSError:
+                    pass
             with run_lock:
                 run_status["status"] = "idle"
             carga_subprocess = None
             carga_stop_path = None
 
     threading.Thread(target=drain_and_finalize, daemon=True).start()
-    return jsonify({
-        "ok": True,
-        "message": "Carga iniciada. Observa el progreso abajo." + (
-            " Valida cada fila en el formulario." if wait_for_confirm else " Envío automático."
-        ),
-    })
 
 
 @app.route("/api/stop", methods=["POST"])
@@ -497,6 +582,7 @@ def stop_carga():
             Path(carga_stop_path).write_text("1", encoding="utf-8")
         except OSError:
             pass
+    stop_event.set()
     return jsonify({"ok": True, "message": "Señal de parada enviada. La carga se detendrá al terminar la fila actual."})
 
 
@@ -525,6 +611,7 @@ def reset_status():
     global run_status, carga_subprocess, carga_stop_path
     with run_lock:
         run_status["status"] = "idle"
+    stop_event.clear()
     if carga_stop_path:
         try:
             Path(carga_stop_path).unlink(missing_ok=True)
