@@ -124,19 +124,6 @@
       <div class="log" id="log"></div>
     </section>
 
-    <!-- Historial de cargas -->
-    <section class="historial card">
-      <h2 class="historial-toggle" id="historialToggle">
-        Historial de cargas
-        <span class="historial-chevron">▾</span>
-      </h2>
-      <div id="historialContent" class="historial-content" style="display:none">
-        <p class="hint">Últimas 20 cargas realizadas.</p>
-        <div id="historialList" class="historial-list"></div>
-        <button type="button" id="btnRefreshHistorial" class="btn btn-secondary btn-small">Actualizar</button>
-      </div>
-    </section>
-
     </aside>
 
     <main class="content-panel">
@@ -153,8 +140,28 @@
           <button type="button" id="btnConfirm" class="btn btn-primary">Guardar cambios y continuar</button>
         </div>
       </section>
+
+      <!-- Historial de cargas (debajo de la tabla de datos) -->
+      <section class="historial card">
+        <h2 class="historial-toggle" id="historialToggle">
+          Historial de cargas
+          <span class="historial-chevron">▾</span>
+        </h2>
+        <div id="historialContent" class="historial-content" style="display:none">
+          <div class="historial-header-actions">
+            <div class="historial-filter-wrap">
+              <label class="historial-filter-label">Desde:
+                <input type="date" id="historialDesde" class="historial-date-input">
+              </label>
+              <button type="button" id="btnRefreshHistorial" class="btn btn-secondary btn-small">Actualizar</button>
+            </div>
+          </div>
+          <div id="historialArchivos" class="historial-archivos"></div>
+          <div id="historialList" class="historial-list"></div>
+        </div>
+      </section>
     </main>
   </div>
-  <script src="/static/app.js?v=12"></script>
+  <script src="/static/app.js?v=13"></script>
 </body>
 </html>

@@ -57,6 +57,8 @@ progress_queue: Queue = Queue()
 current_excel_path: Path | None = None
 # Ruta del PDF actual (si se subió PDF)
 current_pdf_path: Path | None = None
+# Nombre original del archivo tal como lo subió el usuario (preserva el nombre real)
+current_original_filename: str | None = None
 # Estado: "idle" | "running"
 run_status = {"status": "idle"}
 run_lock = threading.Lock()
@@ -132,7 +134,7 @@ def get_lugar_coords():
 @app.route("/api/upload", methods=["POST"])
 def upload():
     """Sube Excel o PDF y lo guarda en uploads/."""
-    global current_excel_path, current_pdf_path
+    global current_excel_path, current_pdf_path, current_original_filename
     if "file" not in request.files:
         return jsonify({"error": "No se envió ningún archivo"}), 400
     f = request.files["file"]
@@ -141,19 +143,21 @@ def upload():
     if not allowed_file(f.filename):
         return jsonify({"error": "Solo se permiten .xlsx, .xls, .csv o .pdf"}), 400
     ext = f.filename.rsplit(".", 1)[1].lower()
+    original_name = f.filename  # Nombre real que subió el usuario
     safe_name = secure_filename(f.filename)
     if not safe_name:
         safe_name = f"archivo.{ext}"
     path = UPLOAD_DIR / safe_name
     f.save(str(path))
+    current_original_filename = original_name
     if ext == "pdf":
         current_pdf_path = path
         current_excel_path = None
-        return jsonify({"ok": True, "filename": safe_name, "type": "pdf"})
+        return jsonify({"ok": True, "filename": safe_name, "original_filename": original_name, "type": "pdf"})
     else:
         current_excel_path = path
         current_pdf_path = None
-        return jsonify({"ok": True, "filename": safe_name, "type": "excel"})
+        return jsonify({"ok": True, "filename": safe_name, "original_filename": original_name, "type": "excel"})
 
 
 @app.route("/api/load-excel", methods=["POST"])
@@ -409,11 +413,13 @@ def start():
         _start_via_subprocess(
             current_excel_path, wait_for_confirm, auto_open_window,
             open_form_in_page, use_api, defaults, row_indices, start_row,
+            current_original_filename,
         )
     else:
         _start_via_thread(
             current_excel_path, wait_for_confirm, auto_open_window,
             open_form_in_page, use_api, defaults, row_indices, start_row,
+            current_original_filename,
         )
     return jsonify({
         "ok": True,
@@ -426,6 +432,7 @@ def start():
 def _start_via_thread(
     excel_path, wait_for_confirm, auto_open_window,
     open_form_in_page, use_api, defaults, row_indices, start_row,
+    original_filename=None,
 ):
     """Modo local (Flask dev server): thread que comparte browser en memoria."""
     stop_event.clear()
@@ -493,6 +500,7 @@ def _start_via_thread(
                 row_indices=row_indices,
                 use_api=use_api,
                 stop_event=stop_event,
+                original_filename=original_filename,
             )
         except Exception as e:
             progress_queue.put({"event": "error", "message": str(e)})
@@ -520,6 +528,7 @@ def _start_via_thread(
 def _start_via_subprocess(
     excel_path, wait_for_confirm, auto_open_window,
     open_form_in_page, use_api, defaults, row_indices, start_row,
+    original_filename=None,
 ):
     """Modo Gunicorn/Railway: subprocess aislado sin asyncio."""
     global carga_subprocess, carga_stop_path
@@ -552,6 +561,7 @@ def _start_via_subprocess(
         "defaults": defaults,
         "row_indices": row_indices,
         "start_row": start_row,
+        "original_filename": original_filename,
     }
 
     fd_job, job_path = tempfile.mkstemp(prefix="kobo_job_", suffix=".json", text=True)
@@ -753,9 +763,10 @@ def get_checkpoint():
 @app.route("/api/reload-file", methods=["POST"])
 def reload_file():
     """Recarga un archivo previamente subido desde uploads/ como archivo activo."""
-    global current_excel_path, current_pdf_path
+    global current_excel_path, current_pdf_path, current_original_filename
     data = request.get_json() or {}
     filename = (data.get("filename") or "").strip()
+    original_name = (data.get("original_filename") or filename).strip()
     if not filename:
         return jsonify({"error": "Falta nombre de archivo"}), 400
     safe_name = secure_filename(filename)
@@ -767,7 +778,8 @@ def reload_file():
         return jsonify({"error": "Solo se pueden recargar archivos Excel o CSV"}), 400
     current_excel_path = path
     current_pdf_path = None
-    return jsonify({"ok": True, "filename": safe_name, "type": "excel"})
+    current_original_filename = original_name or safe_name
+    return jsonify({"ok": True, "filename": safe_name, "original_filename": current_original_filename, "type": "excel"})
 
 
 # ── Historial ─────────────────────────────────────────────────────────────────
@@ -788,8 +800,8 @@ def get_historial():
                     pass
     except Exception:
         pass
-    # Devolver las últimas 20, más recientes primero
-    return jsonify({"ok": True, "entries": list(reversed(entries[-20:]))})
+    # Devolver todas las entradas, más recientes primero (el frontend filtra por fecha)
+    return jsonify({"ok": True, "entries": list(reversed(entries))})
 
 
 # ── Discover form ─────────────────────────────────────────────────────────────

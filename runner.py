@@ -56,17 +56,19 @@ def load_checkpoint() -> dict | None:
     return None
 
 
-def save_historial(stats: dict, excel_path: Path | None = None) -> None:
+def save_historial(stats: dict, excel_path: Path | None = None, original_filename: str | None = None) -> None:
     """Agrega una entrada al historial de cargas."""
     LOGS_DIR.mkdir(exist_ok=True)
     try:
+        archivo_interno = excel_path.name if excel_path else ""
         entry = {
             "fecha": datetime.now().isoformat(),
             "total": stats.get("total", 0),
             "exitosos": stats.get("exitosos", 0),
             "fallidos": stats.get("fallidos", 0),
             "tiempo_segundos": stats.get("tiempo_segundos", 0),
-            "archivo": excel_path.name if excel_path else "",
+            "archivo": archivo_interno,
+            "archivo_original": original_filename or archivo_interno,
         }
         with open(HISTORIAL_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -142,6 +144,7 @@ def run_carga(
     row_indices: list[int] | None = None,
     use_api: bool | None = None,
     stop_event: threading.Event | None = None,
+    original_filename: str | None = None,
 ) -> dict:
     """
     Ejecuta la carga fila por fila y notifica progreso.
@@ -284,7 +287,7 @@ def run_carga(
                 })
 
         stats["tiempo_segundos"] = round(time.perf_counter() - start_time, 2)
-        save_historial(stats, excel_path)
+        save_historial(stats, excel_path, original_filename=original_filename)
         save_error_log(stats, all_records, excel_path)
         emit({
             "event": "done",
@@ -428,7 +431,7 @@ def run_carga(
     finally:
         filler.stop(close_browser=not use_shared)
         stats["tiempo_segundos"] = round(time.perf_counter() - start_time, 2)
-        save_historial(stats, excel_path)
+        save_historial(stats, excel_path, original_filename=original_filename)
         save_error_log(stats, all_records, excel_path)
         emit({
             "event": "done",

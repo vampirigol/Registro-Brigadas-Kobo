@@ -100,6 +100,7 @@ def worker_main(job: dict[str, Any], progress_q: ProgressSink, stop_ev: StopLike
         row_indices=job.get("row_indices"),
         use_api=use_api,
         stop_event=stop_ev,
+        original_filename=job.get("original_filename"),
     )
 
 

@@ -50,6 +50,8 @@
   const historialToggle = document.getElementById('historialToggle');
   const historialContent = document.getElementById('historialContent');
   const historialList = document.getElementById('historialList');
+  const historialArchivos = document.getElementById('historialArchivos');
+  const historialDesde = document.getElementById('historialDesde');
   const btnRefreshHistorial = document.getElementById('btnRefreshHistorial');
 
   let uploadedFilename = null;
@@ -926,6 +928,15 @@
 
   // ── Historial ────────────────────────────────────────────────────────────────
 
+  // Inicializar filtro de fecha con el día 22 del mes actual
+  (function () {
+    if (!historialDesde) return;
+    var hoy = new Date();
+    var yyyy = hoy.getFullYear();
+    var mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    historialDesde.value = yyyy + '-' + mm + '-22';
+  })();
+
   historialToggle.addEventListener('click', function () {
     var open = historialContent.style.display !== 'none';
     historialContent.style.display = open ? 'none' : 'block';
@@ -935,37 +946,87 @@
   if (btnRefreshHistorial) {
     btnRefreshHistorial.addEventListener('click', function () { loadHistorial(); });
   }
+  if (historialDesde) {
+    historialDesde.addEventListener('change', function () { loadHistorial(); });
+  }
 
   function loadHistorial() {
     fetch('/api/historial')
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        renderHistorial(data.entries || []);
+        var entries = data.entries || [];
+        // Filtrar por fecha si hay filtro activo
+        var desdeVal = historialDesde ? historialDesde.value : '';
+        if (desdeVal) {
+          entries = entries.filter(function (e) {
+            return (e.fecha || '') >= desdeVal;
+          });
+        }
+        renderHistorialArchivos(entries);
+        renderHistorial(entries);
       })
       .catch(function () { /* silencioso */ });
+  }
+
+  function renderHistorialArchivos(entries) {
+    if (!historialArchivos) return;
+    if (entries.length === 0) {
+      historialArchivos.innerHTML = '';
+      return;
+    }
+    // Agrupar por nombre original del archivo (único por nombre)
+    var archivosMap = {};
+    entries.forEach(function (e) {
+      var nombre = e.archivo_original || e.archivo || '—';
+      if (!archivosMap[nombre]) {
+        archivosMap[nombre] = { nombre: nombre, archivo: e.archivo || '', count: 0, exitosos: 0, fallidos: 0 };
+      }
+      archivosMap[nombre].count++;
+      archivosMap[nombre].exitosos += (e.exitosos || 0);
+      archivosMap[nombre].fallidos += (e.fallidos || 0);
+    });
+    var archivos = Object.values(archivosMap);
+    var html = '<div class="hist-archivos-titulo">Archivos cargados en el período</div>';
+    html += '<ul class="hist-archivos-lista">';
+    archivos.forEach(function (a) {
+      var esExcel = /\.(xlsx|xls|csv)$/i.test(a.archivo);
+      var badge = a.fallidos > 0
+        ? '<span class="hist-badge-warn">' + a.fallidos + ' fallidos</span>'
+        : '<span class="hist-badge-ok">' + a.exitosos + ' exitosos</span>';
+      html += '<li class="hist-archivo-item">';
+      html += '<span class="hist-archivo-nombre" title="' + escapeHtml(a.nombre) + '">' + escapeHtml(a.nombre) + '</span>';
+      html += '<span class="hist-archivo-meta">' + a.count + ' carga(s) · ' + badge + '</span>';
+      if (esExcel) {
+        html += '<button class="btn-hist-reload btn-hist-reload-small" data-filename="' + escapeHtml(a.archivo) + '" data-original="' + escapeHtml(a.nombre) + '" title="Recargar en la tabla">↩ Recargar</button>';
+      }
+      html += '</li>';
+    });
+    html += '</ul>';
+    historialArchivos.innerHTML = html;
   }
 
   function renderHistorial(entries) {
     if (!historialList) return;
     if (entries.length === 0) {
-      historialList.innerHTML = '<p class="hint">Aún no hay cargas registradas.</p>';
+      historialList.innerHTML = '<p class="hint">No hay cargas registradas en este período.</p>';
       return;
     }
-    var html = '<table class="historial-table"><thead><tr><th>Fecha</th><th>Archivo</th><th>Total</th><th title="Exitosos">✓</th><th title="Fallidos">✗</th><th>Tiempo</th></tr></thead><tbody>';
+    var html = '<table class="historial-table"><thead><tr><th>Fecha</th><th>Archivo original</th><th>Total</th><th title="Exitosos">✓</th><th title="Fallidos">✗</th><th>Tiempo</th></tr></thead><tbody>';
     entries.forEach(function (e) {
       var fecha = (e.fecha || '').slice(0, 16).replace('T', ' ');
       var rowClass = e.fallidos > 0 ? 'hist-row-warn' : 'hist-row-ok';
       var archivo = e.archivo || '';
+      var archivoOriginal = e.archivo_original || archivo;
       var esExcel = /\.(xlsx|xls|csv)$/i.test(archivo);
       html += '<tr class="' + rowClass + '">';
       html += '<td>' + escapeHtml(fecha) + '</td>';
       if (esExcel) {
-        html += '<td title="' + escapeHtml(archivo) + ' — clic para cargar en la tabla">';
-        html += '<button class="btn-hist-reload" data-filename="' + escapeHtml(archivo) + '" title="Cargar en la tabla">';
-        html += escapeHtml(archivo.slice(0, 20)) + (archivo.length > 20 ? '…' : '') + ' ↩';
+        html += '<td title="' + escapeHtml(archivoOriginal) + ' — clic para cargar en la tabla">';
+        html += '<button class="btn-hist-reload" data-filename="' + escapeHtml(archivo) + '" data-original="' + escapeHtml(archivoOriginal) + '" title="Cargar en la tabla">';
+        html += escapeHtml(archivoOriginal) + ' ↩';
         html += '</button></td>';
       } else {
-        html += '<td title="' + escapeHtml(archivo) + '">' + escapeHtml(archivo.slice(0, 20) || '—') + '</td>';
+        html += '<td title="' + escapeHtml(archivoOriginal) + '">' + escapeHtml(archivoOriginal || '—') + '</td>';
       }
       html += '<td>' + (e.total || 0) + '</td>';
       html += '<td class="hist-ok">' + (e.exitosos || 0) + '</td>';
@@ -978,31 +1039,34 @@
   }
 
   // Clic en nombre de archivo del historial → recarga en la tabla
-  if (historialList) {
-    historialList.addEventListener('click', function (ev) {
+  function setupHistorialReload(container) {
+    if (!container) return;
+    container.addEventListener('click', function (ev) {
       var btn = ev.target.closest('.btn-hist-reload');
       if (!btn) return;
       var filename = btn.getAttribute('data-filename');
+      var originalName = btn.getAttribute('data-original') || filename;
       if (!filename) return;
+      var origText = btn.textContent;
       btn.disabled = true;
       btn.textContent = 'Cargando…';
       fetch('/api/reload-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: filename }),
+        body: JSON.stringify({ filename: filename, original_filename: originalName }),
       })
         .then(function (r) { return r.json(); })
         .then(function (data) {
           btn.disabled = false;
-          btn.textContent = filename.slice(0, 20) + (filename.length > 20 ? '…' : '') + ' ↩';
+          btn.textContent = origText;
           if (data.error) {
             addLog('Error al recargar archivo: ' + data.error, 'error');
             return;
           }
           uploadedFilename = data.filename;
           uploadedFileType = data.type || 'excel';
-          uploadedFileEl.textContent = 'Archivo cargado: ' + data.filename;
-          addLog('Archivo recargado desde historial: ' + data.filename, 'info');
+          uploadedFileEl.textContent = 'Archivo cargado: ' + (data.original_filename || data.filename);
+          addLog('Archivo recargado desde historial: ' + (data.original_filename || data.filename), 'info');
           verifySectionEl.style.display = 'none';
           extractedRecords = [];
           loadExcelForVerification();
@@ -1010,11 +1074,14 @@
         })
         .catch(function (err) {
           btn.disabled = false;
-          btn.textContent = filename.slice(0, 20) + (filename.length > 20 ? '…' : '') + ' ↩';
+          btn.textContent = origText;
           addLog('Error al recargar archivo: ' + err.message, 'error');
         });
     });
   }
+
+  setupHistorialReload(historialList);
+  setupHistorialReload(historialArchivos);
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 
