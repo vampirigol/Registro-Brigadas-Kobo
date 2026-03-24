@@ -102,6 +102,7 @@ EXCEL_TO_INTERNAL = {
     "estatus_migra": "estatus_migra",
     "Modalidad_de_la_atenci_n": "Modalidad_de_la_atenci_n",
     # --- Plantilla_Brigadas_Salud_Clinicas (encabezados con * y variantes) ---
+    "Nombre del Paciente": "NAME",
     "Nombre del Paciente*": "NAME",
     "Fecha de atención": "Fecha_de_atenci_n",
     "Toma consentimiento inicial": "CONS1",
@@ -178,6 +179,17 @@ EXCEL_TO_INTERNAL = {
     "Plan de Tratamiento": "Plan_de_Tratamiento",
     "Plan de tratamiento": "Plan_de_Tratamiento",
     "Plan_de_Tratamiento": "Plan_de_Tratamiento",
+    # --- Diagnóstico fisioterapia (se concatena al plan de tratamiento) ---
+    "Diagnostico Fisioterapia": "Plan_de_Tratamiento",
+    "Diagnóstico Fisioterapia": "Plan_de_Tratamiento",
+    "Diagnóstico fisioterapia": "Plan_de_Tratamiento",
+    # --- Unidades entregadas (se añade al campo de insumos) ---
+    "Unidades_entregadas": "Unidades_entregadas",
+    "Unidades entregadas": "Unidades_entregadas",
+    # --- Especificar qué se entrega (complemento de insumos) ---
+    "Especifique_qu_se_entrega": "Especifique_qu_se_entrega",
+    "Especifique qu se entrega": "Especifique_qu_se_entrega",
+    "Especifique qué se entrega": "Especifique_qu_se_entrega",
     # --- ¿Requiere anteojos? ---
     "¿Requiere anteojos?": "_Requiere_anteojos",
     "Requiere anteojos": "_Requiere_anteojos",
@@ -225,7 +237,7 @@ EXCEL_TO_INTERNAL = {
     "LABORATORIOS": "esp_laboratorio",
 }
 # Claves que pueden venir de la plantilla y deben mostrarse en la tabla (unión con OUTPUT_COLUMNS)
-OUTPUT_COLUMNS_EXTRA = ["NAT", "lat", "long", "alt", "acc"]
+OUTPUT_COLUMNS_EXTRA = ["NAT", "lat", "long", "alt", "acc", "Unidades_entregadas", "Especifique_qu_se_entrega"]
 
 # Orden de columnas en la salida (para consistencia)
 OUTPUT_COLUMNS = [
@@ -398,7 +410,11 @@ def load_excel_to_records(
             elif internal == "SEX":
                 rec["SEX"] = _normalize_sex(value) or value
             elif internal == "Servicio_que_se_brinda":
-                rec["Servicio_que_se_brinda"] = value
+                # Solo sobreescribir si el campo aún no tiene valor (la primera columna que mapee gana)
+                if value and not rec.get("Servicio_que_se_brinda"):
+                    rec["Servicio_que_se_brinda"] = value
+                elif value and rec.get("Servicio_que_se_brinda") == "":
+                    rec["Servicio_que_se_brinda"] = value
             elif internal == "Diagnostico_Motivo":
                 if value:  # no sobreescribir con vacío (ej. columna "Diagnósticos" NaN borra "Padecimiento médico actual")
                     rec["Diagnostico_Motivo"] = value
@@ -448,11 +464,20 @@ def load_excel_to_records(
             elif internal == "Tratamiento":
                 rec["Tratamiento"] = value
             elif internal == "Plan_de_Tratamiento":
-                rec["Plan_de_Tratamiento"] = value
+                # Acumular valores de múltiples columnas (Plan de Tratamiento + Diagnostico Fisioterapia)
+                existing_plan = rec.get("Plan_de_Tratamiento", "")
+                if value and existing_plan and value != existing_plan:
+                    rec["Plan_de_Tratamiento"] = existing_plan + " | " + value
+                elif value:
+                    rec["Plan_de_Tratamiento"] = value
             elif internal == "Estado_paciente":
                 rec["Estado_paciente"] = value
             elif internal == "CONS1":
                 rec["CONS1"] = _normalize_si_no(value) if value else rec.get("CONS1", "")
+            elif internal == "Unidades_entregadas":
+                rec["Unidades_entregadas"] = value
+            elif internal == "Especifique_qu_se_entrega":
+                rec["Especifique_qu_se_entrega"] = value
             elif internal in ("esp_odontologia", "esp_fisioterapia", "esp_medicina_general",
                               "esp_oftalmologia", "esp_laboratorio"):
                 # Columnas de especialidad del formulario físico:

@@ -39,8 +39,8 @@ _GEO_FALLBACK: dict[str, str] = {
     "loreto":                 "26.0115 -111.3414 0 0",
     "ciudad constitucion":    "25.0389 -111.6707 0 0",
     "ciudad constitución":    "25.0389 -111.6707 0 0",
-    "vizcaino":               "27.9896 -113.7296 0 0",
-    "vizcaíno":               "27.9896 -113.7296 0 0",
+    "vizcaino":               "27.600992342277443 -113.57458248245227 0 0",
+    "vizcaíno":               "27.600992342277443 -113.57458248245227 0 0",
     "bahia tortuga":          "27.6765 -114.9015 0 0",
     "bahía tortuga":          "27.6765 -114.9015 0 0",
     "bahia asuncion":         "27.1290 -114.2890 0 0",
@@ -668,6 +668,10 @@ def apply_rules(
         if explicit_svc and explicit_svc in especialidades_marcadas:
             # El servicio explícito coincide con uno marcado → es el servicio actual
             servicio_actual = explicit_svc
+        elif explicit_svc and explicit_svc in SERVICIOS_CANONICOS:
+            # La columna "Servicio que se brinda" gana aunque esp_* no coincida (p. ej. padecimiento
+            # en otro módulo rellenó solo esp_oftalmologia pero la fila es de Fisioterapia).
+            servicio_actual = explicit_svc
         else:
             # Tomar la primera especialidad marcada como servicio actual
             servicio_actual = especialidades_marcadas[0]
@@ -719,6 +723,10 @@ def apply_rules(
             tx_oft = str(record.get("Tratamiento", "")).strip().lower()
             _dio_lentes = _tiene_lentes(insumos_oft) or _tiene_lentes(tx_oft)
             out["_Requiere_anteojos"] = "Si" if _dio_lentes else "No"
+
+        # 5. Especifique qué se entrega → "Anteojos" cuando se dan lentes
+        if out.get("_Requiere_anteojos") == "Si":
+            out["Especifique_qu_se_entrega"] = "Anteojos"
 
     # ── ODONTOLOGÍA: campos condicionales ────────────────────────────────────
     # Activar cuando el SERVICIO ACTUAL es Dental/Odontología.
@@ -821,17 +829,8 @@ def apply_rules(
 
     # ── INFORMACIÓN PERSONAL ─────────────────────────────────────────────────
     name_raw = str(record.get("NAME", "")).strip()
-    # #region agent log
-    import logging as _logging
-    _dbg = _logging.getLogger("debug.ad0d4e")
-    _dbg.info("[DBG-A] NAME antes de limpiar: %r  |  DOB: %r", name_raw, record.get("DOB", ""))
-    # #endregion
-    # Eliminar cualquier fecha (YYYY-MM-DD o DD/MM/YYYY) que pueda venir concatenada al final del nombre
     name_raw = re.sub(r'[\s\-]?\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*$', '', name_raw).strip()
     name_raw = re.sub(r'[\s\-]?\d{1,2}[-/]\d{1,2}[-/]\d{4}\s*$', '', name_raw).strip()
-    # #region agent log
-    _dbg.info("[DBG-A] NAME despues de limpiar: %r", name_raw)
-    # #endregion
     out["NAME"] = name_raw.upper() if name_raw else ""
     out["SEX"] = _norm_sex(record.get("SEX", "")) or "Femenino"
     out["AGE"] = str(record.get("AGE", "")).strip()
@@ -896,7 +895,10 @@ def apply_rules(
         if plan_src:
             out["Plan_de_Tratamiento"] = plan_src
 
-    entrega_tipo = str(record.get("Especifique_qu_se_entrega", "")).strip()
+    entrega_tipo = (
+        str(out.get("Especifique_qu_se_entrega", "")).strip()
+        or str(record.get("Especifique_qu_se_entrega", "")).strip()
+    )
     out["Especifique_qu_se_entrega"] = entrega_tipo or "Medicamento/suplemento"
 
     unidades = str(record.get("Unidades_entregadas", "1")).strip()
@@ -932,21 +934,6 @@ def apply_rules(
     # Cada estado tiene su propio radio condicional en el formulario.
     lugar_field, lugar_value, lugar_es_otro = _map_lugar_atencion(poc_value, lugar)
 
-    # #region agent log
-    import logging as _logging_fr
-    import json as _json_fr, time as _time_fr, pathlib as _pathlib_fr
-    _dbg_fr = _logging_fr.getLogger("debug.005d64")
-    _log_path_fr = _pathlib_fr.Path("/Users/luciodelacruz/Desktop/2026/Llenado Kobo tools/.cursor/debug-005d64.log")
-    _log_path_fr.parent.mkdir(parents=True, exist_ok=True)
-    _fr_entry = {"sessionId": "005d64", "hypothesisId": "A-D", "location": "filling_rules.py:lugar_block",
-                 "message": "apply_rules lugar block", "timestamp": int(_time_fr.time() * 1000),
-                 "data": {"lugar": lugar, "estado_brigada": estado_brigada, "poc_value": poc_value,
-                          "lugar_field": lugar_field, "lugar_value": lugar_value, "lugar_es_otro": lugar_es_otro,
-                          "record_Lugar": record.get("Lugar", ""), "record_PLACE": record.get("PLACE", "")}}
-    with open(_log_path_fr, "a", encoding="utf-8") as _f_fr:
-        _f_fr.write(_json_fr.dumps(_fr_entry, ensure_ascii=False) + "\n")
-    # #endregion
-
     if poc_value == POC_OTRO:
         # Estado desconocido: llenar directamente OTH y SCH con el lugar libre
         texto_libre = estado_brigada or lugar or "No especificado"
@@ -961,15 +948,6 @@ def apply_rules(
         out["SCH"] = lugar    # Especificar Nombre del Colegio o Comunidad
         out["OTH"] = lugar    # Especificar Lugar de Atención
         out["PLACE"] = lugar
-
-    # #region agent log
-    _fr_entry2 = {"sessionId": "005d64", "hypothesisId": "A-D", "location": "filling_rules.py:lugar_result",
-                  "message": "apply_rules SCH/OTH result", "timestamp": int(_time_fr.time() * 1000),
-                  "data": {"out_SCH": out.get("SCH", ""), "out_OTH": out.get("OTH", ""),
-                           "out_BCS": out.get("BCS", ""), "out_POC": out.get("POC", "")}}
-    with open(_log_path_fr, "a", encoding="utf-8") as _f_fr:
-        _f_fr.write(_json_fr.dumps(_fr_entry2, ensure_ascii=False) + "\n")
-    # #endregion
 
     # ── UBICACIÓN GEOGRÁFICA ─────────────────────────────────────────────────
     # Prioridad:
@@ -1246,6 +1224,9 @@ SERVICIO_ALIAS = {
     "examenes":           "Laboratorios",
     "exámenes":           "Laboratorios",
 }
+
+# Etiquetas exactas del formulario Kobo (para priorizar columna "Servicio que se brinda")
+SERVICIOS_CANONICOS = frozenset(SERVICIO_ALIAS.values())
 
 
 def _norm_servicio(s: str) -> str:

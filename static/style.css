@@ -335,6 +335,9 @@ header h1 {
   font-family: inherit;
 }
 .defaults-form .hint.small { font-size: 0.8rem; margin-top: 0.25rem; }
+.defaults-form .hint.small.error { color: var(--error); font-weight: 600; }
+.defaults-form .hint.small.warn  { color: #d97706; }
+.defaults-form .hint.small.info  { color: var(--accent); }
 
 .geo-fields {
   display: grid;
@@ -386,6 +389,45 @@ header h1 {
 .verify-actions { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .data-table .col-select { width: 2.5rem; text-align: center; }
 .data-table .col-select input[type="checkbox"] { cursor: pointer; }
+.data-table .col-status { width: 5.5rem; text-align: center; white-space: nowrap; }
+
+/* Filas ya cargadas en Kobo */
+.row-already-submitted {
+  background: rgba(34, 197, 94, 0.08) !important;
+}
+.row-already-submitted td {
+  opacity: 0.75;
+}
+.row-already-submitted td.col-select,
+.row-already-submitted td.col-status {
+  opacity: 1;
+}
+
+.badge-submitted {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--success-dim);
+  color: var(--success);
+  letter-spacing: 0.01em;
+}
+
+.badge-pending {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-muted);
+}
+
+.val-submitted {
+  color: var(--success);
+  font-weight: 500;
+}
 
 .hint {
   font-size: 0.9rem;
@@ -712,6 +754,27 @@ header h1 {
 .hist-fail { color: var(--error); font-weight: 500; }
 .hist-row-warn { background: rgba(239, 68, 68, 0.03); }
 .hist-row-ok { background: rgba(34, 197, 94, 0.03); }
+.btn-hist-reload {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-align: left;
+  transition: color 0.15s;
+}
+.btn-hist-reload:hover {
+  color: var(--accent-light);
+}
+.btn-hist-reload:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  text-decoration: none;
+}
 
 /* Responsive */
 @media (max-width: 480px) {

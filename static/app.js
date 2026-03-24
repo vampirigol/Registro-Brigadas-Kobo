@@ -56,6 +56,8 @@
   let uploadedFileType = null;
   let extractedRecords = [];
   let pdfExtractedRecords = [];
+  // true cuando el servidor indica que no pudo determinar coords automáticamente
+  let coordsRequired = false;
 
   if (btnDownloadExtracted) {
     btnDownloadExtracted.style.display = 'none';
@@ -64,6 +66,9 @@
   let currentFormUrl = '';
   let discoveredYaml = '';
   let activeEventSource = null;
+  // Índices seleccionados que deben restaurarse tras un re-render de la tabla
+  // (se setea antes de loadExcelForVerification() para no perder la selección del usuario)
+  let _pendingRestoreIndices = null;
 
   // ── Utilidades ──────────────────────────────────────────────────────────────
 
@@ -199,8 +204,14 @@
   function updateStartButton() {
     const hasMapping = mappingStatusEl.classList.contains('ok');
     const hasFile = !!uploadedFilename;
-    const notRunning = btnStop.style.display === 'none' || btnStop.style.display === '';
-    btnStart.disabled = !hasFile || !hasMapping;
+    const lat = (inputLatitud && inputLatitud.value || '').trim();
+    const lon = (inputLongitud && inputLongitud.value || '').trim();
+    const hasCoords = !!(lat && lon);
+    const coordsMissing = coordsRequired && !hasCoords;
+    btnStart.disabled = !hasFile || !hasMapping || coordsMissing;
+    if (coordsMissing) {
+      setCoordsHint('Coordenadas obligatorias: ingresa Latitud y Longitud antes de iniciar.', 'error');
+    }
   }
 
   // ── Checkpoint ──────────────────────────────────────────────────────────────
@@ -245,6 +256,18 @@
     });
   }
 
+  // Re-validar el botón de inicio cuando el usuario llena manualmente las coordenadas
+  function onCoordsInput() {
+    updateStartButton();
+    const lat = (inputLatitud && inputLatitud.value || '').trim();
+    const lon = (inputLongitud && inputLongitud.value || '').trim();
+    if (lat && lon && coordsRequired) {
+      setCoordsHint('Coordenadas ingresadas. Puedes iniciar la carga.', 'info');
+    }
+  }
+  if (inputLatitud) inputLatitud.addEventListener('input', onCoordsInput);
+  if (inputLongitud) inputLongitud.addEventListener('input', onCoordsInput);
+
   // ── Tabla de verificación ───────────────────────────────────────────────────
 
   var COLUMN_LABELS = {
@@ -260,7 +283,9 @@
     CGR: 'Acompañante', estatus_migra: 'Estatus', followup: 'Primera vez / Seguimiento',
     Modalidad_de_la_atenci_n: 'Modalidad', CONS1: 'Consent.', _Pertenece_a_alguna_minor_a_t: 'Minoría',
     NAT: 'Nacionalidad', lat: 'Latitud', long: 'Longitud', alt: 'Altitud (m)', acc: 'Precisión (m)',
-    ME_ML: '¿Embarazada / Lactancia?'
+    ME_ML: '¿Embarazada / Lactancia?',
+    Unidades_entregadas: 'Unidades entregadas',
+    Especifique_qu_se_entrega: 'Especifica qué se entrega'
   };
 
   var COLUMN_SELECT_OPTIONS = {
@@ -286,10 +311,14 @@
           return;
         }
         extractedRecords = data.records || [];
-        renderTable(extractedRecords);
+        var alreadySubmitted = data.already_submitted || [];
+        renderTable(extractedRecords, alreadySubmitted);
         verifySectionEl.style.display = 'block';
-        showValidationSummary(data.validation);
+        showValidationSummary(data.validation, alreadySubmitted);
         var msg = 'Excel cargado: ' + data.count + ' registros.';
+        if (alreadySubmitted.length > 0) {
+          msg += ' ' + alreadySubmitted.length + ' fila(s) ya cargada(s) anteriormente.';
+        }
         var v = data.validation || {};
         if (v.valid != null) msg += ' ' + v.valid + ' completos.';
         addLog(msg + ' Listo para iniciar.', 'info');
@@ -311,11 +340,18 @@
             if (inpLon && !inpLon.value) inpLon.value = data.defaults.Longitud;
           }
         }
+        // Actualizar estado de coordenadas requeridas
+        coordsRequired = !!data.coords_required;
+        updateStartButton();
+
         if (data.coords_from_store) {
-          setCoordsHint('Coordenadas guardadas aplicadas para "' + data.coords_from_store + '".', 'info');
-          addLog('Coordenadas guardadas aplicadas para ' + data.coords_from_store, 'info');
+          var lugarLabel = data.coords_from_store;
+          setCoordsHint('Coordenadas aplicadas para "' + lugarLabel + '".', 'info');
+          addLog('Coordenadas aplicadas para ' + lugarLabel, 'info');
         } else if ((inputLatitud && inputLatitud.value) || (inputLongitud && inputLongitud.value)) {
           setCoordsHint('Coordenadas listas para usar.', 'info');
+        } else if (coordsRequired) {
+          setCoordsHint('Coordenadas obligatorias: el lugar no fue reconocido. Ingresa Latitud y Longitud para continuar.', 'error');
         } else {
           setCoordsHint('');
         }
@@ -325,16 +361,19 @@
       });
   }
 
-  function showValidationSummary(v) {
-    if (!v || !validationSummaryEl) return;
+  function showValidationSummary(v, alreadySubmitted) {
+    if (!validationSummaryEl) return;
     var parts = [];
-    if (v.errors && v.errors.length > 0) {
+    if (alreadySubmitted && alreadySubmitted.length > 0) {
+      parts.push('<span class="val-submitted">' + alreadySubmitted.length + ' fila(s) ya cargada(s) en Kobo (desmarcadas)</span>');
+    }
+    if (v && v.errors && v.errors.length > 0) {
       parts.push('<span class="val-error">⚠ ' + v.errors.length + ' fila(s) con errores obligatorios</span>');
     }
-    if (v.duplicates && v.duplicates.length > 0) {
+    if (v && v.duplicates && v.duplicates.length > 0) {
       parts.push('<span class="val-warn">⚠ ' + v.duplicates.length + ' posible(s) fila(s) duplicada(s)</span>');
     }
-    if (v.with_warnings > 0) {
+    if (v && v.with_warnings > 0) {
       parts.push('<span class="val-info">' + v.with_warnings + ' fila(s) con advertencias</span>');
     }
     if (parts.length === 0) {
@@ -345,22 +384,28 @@
     validationSummaryEl.style.display = 'block';
   }
 
-  function renderTable(records) {
+  function renderTable(records, alreadySubmitted) {
     if (!records || records.length === 0) {
       dataTableEl.innerHTML = '<tr><td>Sin registros</td></tr>';
       return;
     }
+    var submittedSet = {};
+    (alreadySubmitted || []).forEach(function (i) { submittedSet[i] = true; });
+
     const cols = Object.keys(records[0]);
     let html = '<thead><tr>';
     html += '<th class="col-select"><input type="checkbox" id="selectAllRows" title="Seleccionar todas" checked></th>';
+    html += '<th class="col-status" title="Estado de carga">Estado</th>';
     cols.forEach(function (c) {
       var label = COLUMN_LABELS[c] || c;
       html += '<th title="' + escapeHtml(c) + '">' + escapeHtml(label) + '</th>';
     });
     html += '</tr></thead><tbody>';
     records.forEach(function (rec, idx) {
-      html += '<tr data-row="' + idx + '">';
-      html += '<td class="col-select"><input type="checkbox" class="row-select" data-row-index="' + idx + '" checked></td>';
+      var isSubmitted = !!submittedSet[idx];
+      html += '<tr data-row="' + idx + '"' + (isSubmitted ? ' class="row-already-submitted"' : '') + '>';
+      html += '<td class="col-select"><input type="checkbox" class="row-select" data-row-index="' + idx + '"' + (isSubmitted ? '' : ' checked') + '></td>';
+      html += '<td class="col-status">' + (isSubmitted ? '<span class="badge-submitted" title="Esta fila ya fue cargada exitosamente a Kobo">Cargada</span>' : '<span class="badge-pending">Pendiente</span>') + '</td>';
       cols.forEach(function (col) {
         const val = rec[col] != null ? String(rec[col]) : '';
         if (COLUMN_SELECT_OPTIONS[col]) {
@@ -390,10 +435,27 @@
 
     var selectAll = document.getElementById('selectAllRows');
     if (selectAll) {
+      var hasSubmitted = (alreadySubmitted || []).length > 0;
+      if (hasSubmitted) selectAll.checked = false;
       selectAll.addEventListener('change', function () {
         var checked = selectAll.checked;
         dataTableEl.querySelectorAll('.row-select').forEach(function (cb) { cb.checked = checked; });
       });
+    }
+
+    // Restaurar selección previa del usuario si la hubo (ej. después de "Guardar")
+    if (_pendingRestoreIndices !== null) {
+      var idxSet = new Set(_pendingRestoreIndices);
+      dataTableEl.querySelectorAll('.row-select').forEach(function (cb) {
+        var idx = parseInt(cb.getAttribute('data-row-index'), 10);
+        cb.checked = idxSet.has(idx);
+      });
+      if (selectAll) {
+        var allChecked = dataTableEl.querySelectorAll('.row-select').length > 0 &&
+                         dataTableEl.querySelectorAll('.row-select:not(:checked)').length === 0;
+        selectAll.checked = allChecked;
+      }
+      _pendingRestoreIndices = null;
     }
   }
 
@@ -475,6 +537,7 @@
       return;
     }
     setCoordsHint('');
+    coordsRequired = false;
     const fd = new FormData();
     fd.append('file', file);
     try {
@@ -541,9 +604,12 @@
         uploadedFilename = data.filename;
         uploadedFileType = 'excel';
         dataConfirmed = true;
-        verifySectionEl.style.display = 'none';
         uploadedFileEl.textContent = 'Datos confirmados: ' + data.rows + ' registros. Listo para Iniciar.';
         addLog('Datos confirmados. Listo para iniciar carga.', 'info');
+        // Preservar selección actual para restaurarla después del re-render
+        var currentSelection = getSelectedRowIndices();
+        _pendingRestoreIndices = currentSelection.length > 0 ? currentSelection : null;
+        loadExcelForVerification();
         updateStartButton();
       })
       .catch(function (e) {
@@ -659,6 +725,7 @@
           }
           loadCheckpoint();
           loadHistorial();
+          loadExcelForVerification();
         }
       } catch (err) {
         addLog('Error al interpretar evento: ' + err.message, 'error');
@@ -888,9 +955,18 @@
     entries.forEach(function (e) {
       var fecha = (e.fecha || '').slice(0, 16).replace('T', ' ');
       var rowClass = e.fallidos > 0 ? 'hist-row-warn' : 'hist-row-ok';
+      var archivo = e.archivo || '';
+      var esExcel = /\.(xlsx|xls|csv)$/i.test(archivo);
       html += '<tr class="' + rowClass + '">';
       html += '<td>' + escapeHtml(fecha) + '</td>';
-      html += '<td title="' + escapeHtml(e.archivo || '') + '">' + escapeHtml((e.archivo || '—').slice(0, 20)) + '</td>';
+      if (esExcel) {
+        html += '<td title="' + escapeHtml(archivo) + ' — clic para cargar en la tabla">';
+        html += '<button class="btn-hist-reload" data-filename="' + escapeHtml(archivo) + '" title="Cargar en la tabla">';
+        html += escapeHtml(archivo.slice(0, 20)) + (archivo.length > 20 ? '…' : '') + ' ↩';
+        html += '</button></td>';
+      } else {
+        html += '<td title="' + escapeHtml(archivo) + '">' + escapeHtml(archivo.slice(0, 20) || '—') + '</td>';
+      }
       html += '<td>' + (e.total || 0) + '</td>';
       html += '<td class="hist-ok">' + (e.exitosos || 0) + '</td>';
       html += '<td class="hist-fail">' + (e.fallidos || 0) + '</td>';
@@ -899,6 +975,45 @@
     });
     html += '</tbody></table>';
     historialList.innerHTML = html;
+  }
+
+  // Clic en nombre de archivo del historial → recarga en la tabla
+  if (historialList) {
+    historialList.addEventListener('click', function (ev) {
+      var btn = ev.target.closest('.btn-hist-reload');
+      if (!btn) return;
+      var filename = btn.getAttribute('data-filename');
+      if (!filename) return;
+      btn.disabled = true;
+      btn.textContent = 'Cargando…';
+      fetch('/api/reload-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: filename }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          btn.disabled = false;
+          btn.textContent = filename.slice(0, 20) + (filename.length > 20 ? '…' : '') + ' ↩';
+          if (data.error) {
+            addLog('Error al recargar archivo: ' + data.error, 'error');
+            return;
+          }
+          uploadedFilename = data.filename;
+          uploadedFileType = data.type || 'excel';
+          uploadedFileEl.textContent = 'Archivo cargado: ' + data.filename;
+          addLog('Archivo recargado desde historial: ' + data.filename, 'info');
+          verifySectionEl.style.display = 'none';
+          extractedRecords = [];
+          loadExcelForVerification();
+          updateStartButton();
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          btn.textContent = filename.slice(0, 20) + (filename.length > 20 ? '…' : '') + ' ↩';
+          addLog('Error al recargar archivo: ' + err.message, 'error');
+        });
+    });
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────

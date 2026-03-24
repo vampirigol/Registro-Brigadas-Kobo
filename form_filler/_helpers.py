@@ -366,10 +366,10 @@ def _get_form_contexts_candidates(page: Page) -> list[tuple[FormContext, str]]:
     # 1) APP_URL: iframe#formIframe
     if "localhost" in url or "127.0.0.1" in url:
         try:
-            page.wait_for_selector("iframe#formIframe[src]", timeout=10000)
-            page.wait_for_timeout(500)
+            page.wait_for_selector("iframe#formIframe[src]", timeout=20000)
+            page.wait_for_timeout(700)
             frame = page.frame_locator("iframe#formIframe")
-            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=12000)
+            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=20000)
             add(frame, "iframe#formIframe")
         except Exception:
             pass
@@ -378,7 +378,7 @@ def _get_form_contexts_candidates(page: Page) -> list[tuple[FormContext, str]]:
     try:
         if page.locator("iframe").count() > 0:
             frame = page.frame_locator("iframe").first
-            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=10000)
+            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=20000)
             add(frame, "iframe.first")
     except Exception:
         pass
@@ -391,14 +391,14 @@ def _get_form_contexts_candidates(page: Page) -> list[tuple[FormContext, str]]:
             inner_count = outer.locator("iframe").count()
             if inner_count > 0:
                 inner = outer.frame_locator("iframe").first
-                inner.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=10000)
+                inner.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=20000)
                 add(inner, "iframe.first > iframe.first (anidado)")
     except Exception:
         pass
 
     # 4) Documento principal (esperar más tiempo para que el formulario cargue en reintentos)
     try:
-        page.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=15000)
+        page.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=20000)
         add(page, "documento principal")
     except Exception:
         pass
@@ -407,7 +407,7 @@ def _get_form_contexts_candidates(page: Page) -> list[tuple[FormContext, str]]:
     try:
         if page.locator("iframe#formIframe").count() > 0:
             frame = page.frame_locator("iframe#formIframe")
-            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=8000)
+            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=20000)
             if not any(c[1] == "iframe#formIframe" for c in candidates):
                 add(frame, "iframe#formIframe (compat)")
     except Exception:
@@ -744,10 +744,10 @@ def _get_form_frame(page: Page) -> FormContext | None:
     # 1) Si estamos en APP_URL (nuestra app), buscar iframe#formIframe
     if is_app:
         try:
-            page.wait_for_selector("iframe#formIframe[src]", timeout=15000)
-            page.wait_for_timeout(500)
+            page.wait_for_selector("iframe#formIframe[src]", timeout=20000)
+            page.wait_for_timeout(700)
             frame = page.frame_locator("iframe#formIframe")
-            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=15000)
+            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=20000)
             logger.info("Formulario encontrado en iframe#formIframe (APP_URL)")
             return frame
         except Exception as e:
@@ -757,7 +757,7 @@ def _get_form_frame(page: Page) -> FormContext | None:
     if is_kobo or not is_app:
         try:
             frame = page.frame_locator("iframe").first
-            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=12000)
+            frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=20000)
             logger.info("Formulario encontrado en iframe interno (FORM_URL directo)")
             return frame
         except Exception as e:
@@ -765,7 +765,7 @@ def _get_form_frame(page: Page) -> FormContext | None:
 
         # 3) Fallback: documento principal
         try:
-            page.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=10000)
+            page.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=20000)
             logger.info("Formulario encontrado en documento principal")
             return page
         except Exception as e:
@@ -773,10 +773,10 @@ def _get_form_frame(page: Page) -> FormContext | None:
 
     # 4) Último intento: iframe#formIframe por compatibilidad
     try:
-        page.wait_for_selector("iframe#formIframe[src]", timeout=5000)
-        page.wait_for_timeout(300)
+        page.wait_for_selector("iframe#formIframe[src]", timeout=12000)
+        page.wait_for_timeout(500)
         frame = page.frame_locator("iframe#formIframe")
-        frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=10000)
+        frame.locator(_FIELD_SELECTOR).first.wait_for(state="visible", timeout=15000)
         logger.info("Formulario encontrado en iframe#formIframe (compatibilidad)")
         return frame
     except Exception as e:

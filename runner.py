@@ -15,6 +15,7 @@ from config import FORM_URL, LOGS_DIR, load_mapping, USE_KOBO_API, KOBO_API_TOKE
 from excel_loader import EXCEL_TO_INTERNAL, load_source_dataframe
 from filling_rules import apply_rules
 from form_filler import FormFiller
+from submitted_tracker import mark_row_submitted
 
 CHECKPOINT_FILE = LOGS_DIR / "checkpoint.json"
 HISTORIAL_FILE = LOGS_DIR / "historial.jsonl"
@@ -215,7 +216,8 @@ def run_carga(
                 break
             current_step = step_zero + 1
             # all_records ya está normalizado; usarlo directamente evita doble normalización
-            record = dict(all_records[row_index])
+            raw_record = dict(all_records[row_index])
+            record = dict(raw_record)
             for k, v in defaults.items():
                 if v and not str(record.get(k, "")).strip():
                     record[k] = str(v).strip()
@@ -256,6 +258,7 @@ def run_carga(
             save_checkpoint(row_index, excel_path)
             if ok:
                 stats["exitosos"] += 1
+                mark_row_submitted(raw_record, excel_path.name if excel_path else "")
                 emit({
                     "event": "row_done",
                     "row": current_step,
@@ -295,13 +298,16 @@ def run_carga(
 
     use_shared = False
     try:
-        from shared_browser import get_shared_page
+        from shared_browser import get_shared_page, clear_shared
         shared_page = get_shared_page()
         use_shared = bool(shared_page)
-        try:
-            _ = shared_page.context if shared_page else None
-        except Exception:
-            use_shared = False
+        if use_shared:
+            try:
+                shared_page.evaluate("1")
+            except Exception:
+                clear_shared()
+                shared_page = None
+                use_shared = False
         if use_shared and shared_page:
             emit({"event": "browser_ready", "message": "Usando ventana abierta. El formulario se llenará ahí."})
             filler.start(reuse_page=shared_page)
@@ -328,7 +334,8 @@ def run_carga(
                 break
             current_step = step_zero + 1  # 1-based para progreso "Fila 1 / N"
             # all_records ya está normalizado; usarlo directamente evita doble normalización
-            record = dict(all_records[row_index])
+            raw_record = dict(all_records[row_index])
+            record = dict(raw_record)
             # Aplicar defaults de brigada (Estado, Lugar) si no vienen en el Excel
             for k, v in defaults.items():
                 if v and not str(record.get(k, "")).strip():
@@ -379,6 +386,7 @@ def run_carga(
                     if success:
                         stats["exitosos"] += 1
                         save_checkpoint(row_index, excel_path)
+                        mark_row_submitted(raw_record, excel_path.name if excel_path else "")
                         emit({
                             "event": "row_done",
                             "row": current_step,

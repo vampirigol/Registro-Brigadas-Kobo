@@ -1245,6 +1245,7 @@ class FormFiller:
             "Especifique_s_ntoma",
             "Especifique_diagn_stico_previo",
             "_Requiere_anteojos",
+            "Especifique_qu_se_entrega",
         ]
         _oft_record = {col: record.get(col, "") for col in _oft_cols if record.get(col, "")}
         if _oft_record:

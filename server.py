@@ -30,6 +30,18 @@ from coords_store import (
     upsert_coords_for_lugar,
 )
 
+# Coordenadas por defecto para Vizcaíno, BCS
+_VIZCAINO_LAT = "27.600992342277443"
+_VIZCAINO_LON = "-113.57458248245227"
+
+
+def _is_vizcaino(lugar: str) -> bool:
+    """Detecta si el nombre del lugar corresponde a Vizcaíno (normalizado, sin tildes)."""
+    import unicodedata as _ud
+    s = _ud.normalize("NFKD", lugar or "")
+    s = "".join(ch for ch in s if not _ud.combining(ch))
+    return "vizcaino" in s.lower()
+
 STATIC_DIR = PROJECT_ROOT / "static"
 app = Flask(__name__, static_folder=str(STATIC_DIR))
 CORS(app)
@@ -180,22 +192,39 @@ def load_excel():
         # Prefill coordenadas guardadas para este lugar, si el Excel no las trae
         lugar_default = defaults.get("Lugar")
         if lugar_default and (not defaults.get("Latitud") or not defaults.get("Longitud")):
-            stored = get_coords_for_lugar(lugar_default)
-            if stored:
-                defaults["Latitud"] = defaults.get("Latitud") or stored.get("lat")
-                defaults["Longitud"] = defaults.get("Longitud") or stored.get("lon")
-                # Mantener formato completo para uso posterior
-                defaults["Ubicacion_geografica"] = coords_to_string(stored)
+            # 1. Vizcaíno: coordenadas fijas por defecto
+            if _is_vizcaino(lugar_default):
+                defaults["Latitud"] = _VIZCAINO_LAT
+                defaults["Longitud"] = _VIZCAINO_LON
+                defaults["Ubicacion_geografica"] = f"{_VIZCAINO_LAT} {_VIZCAINO_LON} 0 0"
                 coords_from_store = lugar_default
+            else:
+                # 2. Buscar en el almacén de coordenadas guardadas
+                stored = get_coords_for_lugar(lugar_default)
+                if stored:
+                    defaults["Latitud"] = defaults.get("Latitud") or stored.get("lat")
+                    defaults["Longitud"] = defaults.get("Longitud") or stored.get("lon")
+                    defaults["Ubicacion_geografica"] = coords_to_string(stored)
+                    coords_from_store = lugar_default
+
+        # Determinar si las coordenadas son obligatorias (lugar no reconocido y sin coords)
+        has_coords = bool(defaults.get("Latitud") and defaults.get("Longitud"))
+        coords_required = not has_coords
+
         # Validación de datos
         validation = validate_records(records)
+        # Identificar filas ya enviadas previamente
+        from submitted_tracker import find_submitted_indices
+        already_submitted = find_submitted_indices(records)
         return jsonify({
             "ok": True,
             "records": records,
             "count": len(records),
             "defaults": defaults,
             "coords_from_store": coords_from_store,
+            "coords_required": coords_required,
             "validation": validation,
+            "already_submitted": already_submitted,
         })
     except Exception as e:
         logging.exception("Error al cargar Excel")
@@ -403,7 +432,7 @@ def _start_via_thread(
 
     def run():
         from runner import run_carga
-        from shared_browser import get_shared_page, set_shared_page
+        from shared_browser import get_shared_page, set_shared_page, clear_shared
         from form_filler import FormFiller
 
         while not progress_queue.empty():
@@ -412,10 +441,17 @@ def _start_via_thread(
             except Empty:
                 break
 
+        _thread_pw = _thread_browser = _thread_context = None
         if not use_api and auto_open_window:
             use_headless = open_form_in_page and not wait_for_confirm
             try:
                 existing = get_shared_page()
+                if existing:
+                    try:
+                        existing.evaluate("1")
+                    except Exception:
+                        existing = None
+                        clear_shared()
                 if not existing:
                     filler_temp = FormFiller()
                     filler_temp.start(headless=use_headless)
@@ -430,6 +466,9 @@ def _start_via_thread(
                             filler_temp._page, filler_temp._playwright,
                             filler_temp._browser, filler_temp._context,
                         )
+                        _thread_pw = filler_temp._playwright
+                        _thread_browser = filler_temp._browser
+                        _thread_context = filler_temp._context
                         progress_queue.put({
                             "event": "browser_ready",
                             "message": "Ventana abierta automáticamente." if not use_headless
@@ -458,6 +497,18 @@ def _start_via_thread(
         except Exception as e:
             progress_queue.put({"event": "error", "message": str(e)})
         finally:
+            clear_shared()
+            for _closeable in (_thread_context, _thread_browser):
+                try:
+                    if _closeable:
+                        _closeable.close()
+                except Exception:
+                    pass
+            try:
+                if _thread_pw:
+                    _thread_pw.stop()
+            except Exception:
+                pass
             with run_lock:
                 run_status["status"] = "idle"
 
@@ -695,6 +746,28 @@ def get_checkpoint():
     if cp:
         return jsonify({"ok": True, "checkpoint": cp})
     return jsonify({"ok": False, "checkpoint": None})
+
+
+# ── Reload file from uploads ──────────────────────────────────────────────────
+
+@app.route("/api/reload-file", methods=["POST"])
+def reload_file():
+    """Recarga un archivo previamente subido desde uploads/ como archivo activo."""
+    global current_excel_path, current_pdf_path
+    data = request.get_json() or {}
+    filename = (data.get("filename") or "").strip()
+    if not filename:
+        return jsonify({"error": "Falta nombre de archivo"}), 400
+    safe_name = secure_filename(filename)
+    path = UPLOAD_DIR / safe_name
+    if not path.exists():
+        return jsonify({"error": f"El archivo '{safe_name}' ya no está disponible en el servidor"}), 404
+    ext = path.suffix.lower()
+    if ext not in (".xlsx", ".xls", ".csv"):
+        return jsonify({"error": "Solo se pueden recargar archivos Excel o CSV"}), 400
+    current_excel_path = path
+    current_pdf_path = None
+    return jsonify({"ok": True, "filename": safe_name, "type": "excel"})
 
 
 # ── Historial ─────────────────────────────────────────────────────────────────
