@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KoboUp — Gestión de Archivos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="static/style.css?v=20260410d">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="url(#g1)"/><path d="M9 22V10l7 6 7-6v12" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="g1" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        </div>
+        <div>
+          <h1>KoboUp</h1>
+          <span class="brand-sub">Gestión de Archivos</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="topbar-status" id="connectionStatus">En línea</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navegación principal -->
+  <nav class="main-nav">
+    <div class="main-nav-inner">
+      <button class="main-nav-btn active" data-section="work">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Archivos de trabajo
+      </button>
+      <button class="main-nav-btn" data-section="refs">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+        PDFs de referencia
+      </button>
+    </div>
+  </nav>
+
+  <!-- ═══════════════ SECCIÓN 1: Archivos de trabajo ═══════════════ -->
+  <main class="container section-content" id="sectionWork">
+
+    <section class="kpi-strip">
+      <div class="kpi">
+        <div class="kpi-icon kpi-icon-total">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div><div class="kpi-value" id="kpiTotal">0</div><div class="kpi-label">Total</div></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-icon kpi-icon-pending">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div><div class="kpi-value" id="kpiPending">0</div><div class="kpi-label">Pendientes</div></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-icon kpi-icon-review">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <div><div class="kpi-value" id="kpiReview">0</div><div class="kpi-label">En validación</div></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-icon kpi-icon-valid">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div><div class="kpi-value" id="kpiValid">0</div><div class="kpi-label">Validados</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><h2>Subir archivo</h2></div>
+      <div class="panel-body">
+        <div class="dropzone" id="uploadZone">
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf" multiple hidden>
+          <div class="dropzone-content">
+            <div class="dropzone-icon">
+              <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <p class="dropzone-text">Arrastra uno o varios archivos aquí o <strong>haz clic para seleccionar</strong></p>
+            <span class="dropzone-hint">Excel (.xlsx, .xls, .csv) o PDF — Máx. 50 MB — Puedes seleccionar varios</span>
+          </div>
+        </div>
+
+        <div class="upload-form">
+          <div class="form-row">
+            <div class="form-group form-group-name">
+              <label for="inputName">Tu nombre <span class="required">*</span></label>
+              <input type="text" id="inputName" class="input-flat" placeholder="Ej. Juan Pérez" required>
+            </div>
+            <div class="form-group form-group-status">
+              <label>Tipo de subida</label>
+              <div class="radio-group">
+                <label class="radio-chip">
+                  <input type="radio" name="uploadStatus" value="pendiente" checked>
+                  <span class="radio-chip-label chip-pending">Archivo original</span>
+                </label>
+                <label class="radio-chip">
+                  <input type="radio" name="uploadStatus" value="por_validar">
+                  <span class="radio-chip-label chip-review">Archivo corregido (en validación)</span>
+                </label>
+                <label class="radio-chip">
+                  <input type="radio" name="uploadStatus" value="validado">
+                  <span class="radio-chip-label chip-valid">Archivo validado</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="form-row replaces-row" id="replacesRow" style="display:none">
+            <div class="form-group" style="flex:1">
+              <label for="selectReplaces">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-2px"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/></svg>
+                ¿Qué archivo reemplaza? <span class="replaces-hint">(selecciona el archivo original que este valida)</span>
+              </label>
+              <select id="selectReplaces" class="input-flat select-replaces">
+                <option value="">— Ninguno (detección automática) —</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label for="inputNotes">Nota (opcional)</label>
+              <input type="text" id="inputNotes" class="input-flat" placeholder="Ej. Obregón 1 — versión corregida">
+            </div>
+            <button type="button" id="btnUpload" class="btn btn-primary btn-upload" disabled>
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Subir archivo
+            </button>
+          </div>
+        </div>
+        <div id="uploadMsg" class="toast-msg"></div>
+        <div id="workProgressWrap" class="progress-wrap" style="display:none">
+          <div class="progress-header">
+            <div class="progress-summary">
+              <span class="progress-title" id="workProgressTitle">Subiendo archivos…</span>
+              <span class="progress-speed" id="workProgressSpeed"></span>
+            </div>
+            <div class="progress-stats">
+              <span id="workProgressCount">0 de 0</span>
+              <span class="progress-elapsed" id="workProgressElapsed"></span>
+            </div>
+          </div>
+          <div class="progress-bar-track progress-bar-overall">
+            <div class="progress-bar-fill" id="workProgressBar"></div>
+          </div>
+          <div class="progress-percent" id="workProgressPercent">0%</div>
+          <div class="progress-files-list" id="workProgressFiles"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="flow-strip">
+      <div class="flow-step">
+        <div class="flow-dot dot-pending"></div>
+        <span>Admin sube original</span>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="flow-dot dot-pending"></div>
+        <span>Usuario descarga y corrige</span>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="flow-dot dot-review"></div>
+        <span>Sube versión validada</span>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="flow-dot dot-valid"></div>
+        <span>Archivo validado</span>
+      </div>
+      <div class="flow-arrow">|</div>
+      <div class="flow-step">
+        <div class="flow-dot dot-superseded"></div>
+        <span>Original reemplazado</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Archivos</h2>
+        <div class="panel-header-actions">
+          <div class="tabs" id="filterTabs">
+            <button class="tab active" data-filter="">Todos</button>
+            <button class="tab" data-filter="pendiente">Pendientes</button>
+            <button class="tab" data-filter="por_validar">En validación</button>
+            <button class="tab" data-filter="validado">Validados</button>
+            <button class="tab" data-filter="reemplazado">Reemplazados</button>
+          </div>
+          <button type="button" id="btnRefresh" class="btn btn-icon" title="Actualizar">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="panel-body panel-body-flush">
+        <div id="filesList" class="files-grid">
+          <div class="empty-state">
+            <svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24" opacity="0.3"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p>Aún no hay archivos.</p>
+            <span>Sube el primero usando la sección de arriba.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════════ SECCIÓN 2: PDFs de referencia ═══════════════ -->
+  <main class="container section-content" id="sectionRefs" style="display:none">
+
+    <section class="panel">
+      <div class="panel-header"><h2>Subir PDF de referencia</h2></div>
+      <div class="panel-body">
+        <div class="dropzone" id="refUploadZone">
+          <input type="file" id="refFileInput" accept=".pdf" multiple hidden>
+          <div class="dropzone-content">
+            <div class="dropzone-icon">
+              <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <p class="dropzone-text">Arrastra uno o varios PDFs aquí o <strong>haz clic para seleccionar</strong></p>
+            <span class="dropzone-hint">Solo archivos PDF — Máx. 200 MB cada uno — Puedes seleccionar varios</span>
+          </div>
+        </div>
+
+        <div class="upload-form">
+          <div class="form-row">
+            <div class="form-group form-group-name">
+              <label for="refInputName">Tu nombre <span class="required">*</span></label>
+              <input type="text" id="refInputName" class="input-flat" placeholder="Ej. Juan Pérez">
+            </div>
+            <div class="form-group form-group-name">
+              <label for="refInputLocation">Ubicación / Lugar <span class="required">*</span></label>
+              <input type="text" id="refInputLocation" class="input-flat" list="locationSuggestions" placeholder="Ej. Obregón, Hermosillo, Nogales">
+              <datalist id="locationSuggestions"></datalist>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label for="refInputNotes">Nota (opcional)</label>
+              <input type="text" id="refInputNotes" class="input-flat" placeholder="Ej. Listado de pacientes Obregón — Marzo 2026">
+            </div>
+            <button type="button" id="btnRefUpload" class="btn btn-primary btn-upload" disabled>
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Subir PDF
+            </button>
+          </div>
+        </div>
+        <div id="refUploadMsg" class="toast-msg"></div>
+        <div id="refProgressWrap" class="progress-wrap" style="display:none">
+          <div class="progress-header">
+            <div class="progress-summary">
+              <span class="progress-title" id="refProgressTitle">Subiendo archivos…</span>
+              <span class="progress-speed" id="refProgressSpeed"></span>
+            </div>
+            <div class="progress-stats">
+              <span id="refProgressCount">0 de 0</span>
+              <span class="progress-elapsed" id="refProgressElapsed"></span>
+            </div>
+          </div>
+          <div class="progress-bar-track progress-bar-overall">
+            <div class="progress-bar-fill" id="refProgressBar"></div>
+          </div>
+          <div class="progress-percent" id="refProgressPercent">0%</div>
+          <div class="progress-files-list" id="refProgressFiles"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>PDFs de referencia</h2>
+        <div class="panel-header-actions">
+          <div class="tabs" id="refLocationTabs">
+            <button class="tab active" data-location="">Todos</button>
+          </div>
+          <button type="button" id="btnRefRefresh" class="btn btn-icon" title="Actualizar">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="panel-body panel-body-flush">
+        <div id="refsList" class="files-grid">
+          <div class="empty-state">
+            <svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24" opacity="0.3"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p>Aún no hay PDFs de referencia.</p>
+            <span>Sube el primero usando la sección de arriba.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal para validar (multi-paso) -->
+  <div class="modal-overlay" id="modalOverlay" style="display:none">
+    <div class="modal modal-validate-wide">
+
+      <!-- Paso 1: Elegir método -->
+      <div id="valStep1">
+        <div class="modal-icon-wrap modal-icon-valid">
+          <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <h3>Validar archivo</h3>
+        <p class="modal-filename" id="modalFilename"></p>
+        <p class="val-step-desc">¿Cómo deseas validar este archivo?</p>
+
+        <div class="val-options">
+          <button type="button" class="val-option-card" id="valOptUpload">
+            <div class="val-option-icon">
+              <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <div class="val-option-text">
+              <strong>Subir archivo validado</strong>
+              <span>Sube la versión corregida/validada desde tu computadora</span>
+            </div>
+          </button>
+
+          <button type="button" class="val-option-card" id="valOptSelect">
+            <div class="val-option-icon val-option-icon-select">
+              <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
+            <div class="val-option-text">
+              <strong>Seleccionar archivo ya validado</strong>
+              <span>Elige un archivo validado que ya fue subido al sistema</span>
+            </div>
+          </button>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="modalCancel">Cancelar</button>
+        </div>
+      </div>
+
+      <!-- Paso 2A: Subir archivo validado -->
+      <div id="valStep2Upload" style="display:none">
+        <div class="val-step-header">
+          <button type="button" class="btn btn-ghost btn-back" id="valBackFromUpload">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+            Atrás
+          </button>
+          <h3>Subir archivo validado</h3>
+        </div>
+        <p class="val-replacing-info">Reemplaza: <strong id="valUploadReplacingName"></strong></p>
+
+        <div class="dropzone dropzone-modal" id="valUploadZone">
+          <input type="file" id="valFileInput" accept=".xlsx,.xls,.csv,.pdf" hidden>
+          <div class="dropzone-content">
+            <div class="dropzone-icon">
+              <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <p class="dropzone-text">Arrastra el archivo validado o <strong>haz clic</strong></p>
+            <span class="dropzone-hint">Excel (.xlsx, .xls, .csv) o PDF</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tu nombre <span class="required">*</span></label>
+          <input type="text" id="valUploadName" class="input-flat" placeholder="Tu nombre">
+        </div>
+        <div class="form-group">
+          <label>Nota (opcional)</label>
+          <input type="text" id="valUploadNotes" class="input-flat" placeholder="Comentario">
+        </div>
+        <div id="valUploadMsg" class="toast-msg"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="valUploadCancel">Cancelar</button>
+          <button class="btn btn-success" id="valUploadConfirm" disabled>
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Subir y validar
+          </button>
+        </div>
+      </div>
+
+      <!-- Paso 2B: Seleccionar archivo existente -->
+      <div id="valStep2Select" style="display:none">
+        <div class="val-step-header">
+          <button type="button" class="btn btn-ghost btn-back" id="valBackFromSelect">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+            Atrás
+          </button>
+          <h3>Seleccionar archivo validado</h3>
+        </div>
+        <p class="val-replacing-info">Reemplaza: <strong id="valSelectReplacingName"></strong></p>
+
+        <div class="form-group">
+          <label>Archivo validado en el sistema</label>
+          <select id="valSelectFile" class="input-flat select-replaces">
+            <option value="">— Selecciona un archivo —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tu nombre <span class="required">*</span></label>
+          <input type="text" id="valSelectName" class="input-flat" placeholder="Tu nombre">
+        </div>
+        <div id="valSelectMsg" class="toast-msg"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="valSelectCancel">Cancelar</button>
+          <button class="btn btn-success" id="valSelectConfirm" disabled>
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Confirmar validación
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal para descargar -->
+  <div class="modal-overlay" id="dlModalOverlay" style="display:none">
+    <div class="modal">
+      <div class="modal-icon-wrap">
+        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </div>
+      <h3>Descargar archivo</h3>
+      <p class="modal-filename" id="dlModalFilename"></p>
+      <div class="form-group">
+        <label>Tu nombre <span class="required">*</span></label>
+        <input type="text" id="dlModalName" class="input-flat" placeholder="Escribe tu nombre para registrar la descarga">
+      </div>
+      <p class="dl-status-hint">Al descargar, el archivo pasará a estado <span class="badge badge-review">En validación</span></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="dlModalCancel">Cancelar</button>
+        <button class="btn btn-primary" id="dlModalConfirm">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Descargar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal para duplicados -->
+  <div class="modal-overlay" id="dupModalOverlay" style="display:none">
+    <div class="modal">
+      <div class="modal-icon-wrap" style="color:#f59e0b">
+        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <h3>Archivos duplicados</h3>
+      <p class="dup-modal-desc">Los siguientes archivos ya existen en esta ubicación:</p>
+      <div id="dupFilesList" class="dup-files-list"></div>
+      <div class="modal-actions dup-modal-actions">
+        <button class="btn btn-ghost" id="dupCancel">Cancelar</button>
+        <button class="btn btn-outline" id="dupSkip">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+          Omitir duplicados
+        </button>
+        <button class="btn btn-primary" id="dupReplace">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/></svg>
+          Reemplazar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>KoboUp — Sistema de gestión de archivos &middot; Clínica Adventista</p>
+  </footer>
+
+  <script src="static/app.js?v=20260410d"></script>
+</body>
+</html>
