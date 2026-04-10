@@ -13,7 +13,7 @@ import pandas as pd
 INTERNAL_COLUMNS = {
     "NAME", "Fecha_de_atenci_n", "SEX", "Servicio_que_se_brinda", "Diagnostico_Motivo",
     "HEI", "WEI", "Resultados_Lab_Insumos", "ME_ML", "Tratamiento", "Plan_de_Tratamiento",
-    "Estado_paciente",
+    "Estado_paciente", "Procedimiento_dental",
     "esp_odontologia", "esp_fisioterapia", "esp_medicina_general",
     "esp_oftalmologia", "esp_laboratorio",
 }
@@ -76,6 +76,7 @@ EXCEL_TO_INTERNAL = {
     "Estado_brigada": "Estado_brigada",
     "Lugar": "Lugar",
     "Ubicacion_geografica": "Ubicacion_geografica",
+    "Coordenadas": "Ubicacion_geografica",
     "Lugar de atención": "Lugar",
     "PLACE": "Lugar",
     "Ubicación geográfica": "Ubicacion_geografica",
@@ -183,6 +184,14 @@ EXCEL_TO_INTERNAL = {
     "Diagnostico Fisioterapia": "Plan_de_Tratamiento",
     "Diagnóstico Fisioterapia": "Plan_de_Tratamiento",
     "Diagnóstico fisioterapia": "Plan_de_Tratamiento",
+    # --- Procedimiento odontológico (nueva columna) ---
+    "¿Que procedimiento se realiza?":         "Procedimiento_dental",
+    "¿Qué procedimiento se realiza?":         "Procedimiento_dental",
+    "Que procedimiento se realiza":           "Procedimiento_dental",
+    "Qué procedimiento se realiza":           "Procedimiento_dental",
+    "Procedimiento dental":                   "Procedimiento_dental",
+    "Procedimiento":                          "Procedimiento_dental",
+    "Procedimiento_dental":                   "Procedimiento_dental",
     # --- Unidades entregadas (se añade al campo de insumos) ---
     "Unidades_entregadas": "Unidades_entregadas",
     "Unidades entregadas": "Unidades_entregadas",
@@ -265,6 +274,7 @@ OUTPUT_COLUMNS = [
     "Tratamiento",
     "Plan_de_Tratamiento",
     "Estado_paciente",
+    "Procedimiento_dental",
     # Columnas de especialidad del formulario físico (para detección automática del servicio)
     "esp_medicina_general",
     "esp_odontologia",
@@ -472,6 +482,8 @@ def load_excel_to_records(
                     rec["Plan_de_Tratamiento"] = value
             elif internal == "Estado_paciente":
                 rec["Estado_paciente"] = value
+            elif internal == "Procedimiento_dental":
+                rec["Procedimiento_dental"] = value
             elif internal == "CONS1":
                 rec["CONS1"] = _normalize_si_no(value) if value else rec.get("CONS1", "")
             elif internal == "Unidades_entregadas":

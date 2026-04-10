@@ -53,6 +53,25 @@
   const historialArchivos = document.getElementById('historialArchivos');
   const historialDesde = document.getElementById('historialDesde');
   const btnRefreshHistorial = document.getElementById('btnRefreshHistorial');
+  const kpiSummaryEl = document.getElementById('kpiSummary');
+  const kpiArchivosEl = document.getElementById('kpiArchivos');
+  const kpiFilasEl = document.getElementById('kpiFilas');
+
+  // Filebox (gestión simple de archivos)
+  const fileBoxInput = document.getElementById('fileBoxInput');
+  const fileBoxDropzone = document.getElementById('fileBoxDropzone');
+  const fileBoxPending = document.getElementById('fileBoxPending');
+  const fileBoxPendingCount = document.getElementById('fileBoxPendingCount');
+  const fileBoxPendingList = document.getElementById('fileBoxPendingList');
+  const btnFileBoxClear = document.getElementById('btnFileBoxClear');
+  const chkFileBoxValidated = document.getElementById('chkFileBoxValidated');
+  const fileBoxNote = document.getElementById('fileBoxNote');
+  const btnFileBoxUpload = document.getElementById('btnFileBoxUpload');
+  const fileBoxList = document.getElementById('fileBoxList');
+  const fileBoxMessage = document.getElementById('fileBoxMessage');
+  const fileBoxProgress = document.getElementById('fileBoxProgress');
+  const fileBoxProgressBar = document.getElementById('fileBoxProgressBar');
+  const fileBoxProgressText = document.getElementById('fileBoxProgressText');
 
   let uploadedFilename = null;
   let uploadedFileType = null;
@@ -71,6 +90,7 @@
   // Índices seleccionados que deben restaurarse tras un re-render de la tabla
   // (se setea antes de loadExcelForVerification() para no perder la selección del usuario)
   let _pendingRestoreIndices = null;
+  let fileBoxCache = [];
 
   // ── Utilidades ──────────────────────────────────────────────────────────────
 
@@ -107,6 +127,12 @@
     coordsHint.textContent = text;
     coordsHint.className = 'hint small ' + (type || '');
     coordsHint.style.display = 'block';
+  }
+
+  function setFileBoxMessage(text, type) {
+    if (!fileBoxMessage) return;
+    fileBoxMessage.textContent = text || '';
+    fileBoxMessage.className = 'hint ' + (type || '');
   }
 
   async function prefillCoordsFromStore(lugar, opts) {
@@ -199,6 +225,7 @@
       mappingStatusEl.textContent = 'Error al cargar configuración.';
       mappingStatusEl.className = 'mapping-status warn';
     }
+    loadFileBox();
     // Cargar checkpoint para mostrar opción de reanudación
     loadCheckpoint();
   }
@@ -801,6 +828,273 @@
       });
   });
 
+  // ── Filebox (subir/listar/validar/descargar) ──────────────────────────────────
+
+  var pendingFiles = [];
+
+  function addPendingFiles(fileList) {
+    var validExts = /\.(xlsx|xls|csv|pdf)$/i;
+    for (var i = 0; i < fileList.length; i++) {
+      var f = fileList[i];
+      if (!validExts.test(f.name)) continue;
+      var already = pendingFiles.some(function (p) { return p.name === f.name && p.size === f.size; });
+      if (!already) pendingFiles.push(f);
+    }
+    renderPendingFiles();
+  }
+
+  function renderPendingFiles() {
+    if (!fileBoxPending || !fileBoxPendingList || !fileBoxPendingCount) return;
+    if (pendingFiles.length === 0) {
+      fileBoxPending.style.display = 'none';
+      return;
+    }
+    fileBoxPending.style.display = 'block';
+    var excelCount = 0, pdfCount = 0;
+    pendingFiles.forEach(function (f) {
+      if (/\.pdf$/i.test(f.name)) pdfCount++;
+      else excelCount++;
+    });
+    var parts = [];
+    if (excelCount > 0) parts.push(excelCount + ' Excel/CSV');
+    if (pdfCount > 0) parts.push(pdfCount + ' PDF');
+    fileBoxPendingCount.textContent = pendingFiles.length + ' archivo(s) listos para subir (' + parts.join(', ') + ')';
+    var html = '';
+    pendingFiles.forEach(function (f, idx) {
+      var sizeKb = Math.round(f.size / 1024);
+      var icon = /\.pdf$/i.test(f.name) ? 'PDF' : 'XLS';
+      html += '<li class="filebox-pending-item">';
+      html += '<span class="filebox-pending-icon badge-' + icon.toLowerCase() + '">' + icon + '</span>';
+      html += '<span class="filebox-pending-name">' + escapeHtml(f.name) + '</span>';
+      html += '<span class="filebox-pending-size">' + sizeKb + ' KB</span>';
+      html += '<button class="filebox-pending-remove" data-idx="' + idx + '" title="Quitar">&times;</button>';
+      html += '</li>';
+    });
+    fileBoxPendingList.innerHTML = html;
+  }
+
+  if (fileBoxDropzone) {
+    fileBoxDropzone.addEventListener('click', function () { fileBoxInput && fileBoxInput.click(); });
+    fileBoxDropzone.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      fileBoxDropzone.classList.add('dragover');
+    });
+    fileBoxDropzone.addEventListener('dragleave', function () { fileBoxDropzone.classList.remove('dragover'); });
+    fileBoxDropzone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      fileBoxDropzone.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        addPendingFiles(e.dataTransfer.files);
+      }
+    });
+  }
+  if (fileBoxInput) {
+    fileBoxInput.addEventListener('change', function () {
+      if (fileBoxInput.files && fileBoxInput.files.length > 0) {
+        addPendingFiles(fileBoxInput.files);
+        fileBoxInput.value = '';
+      }
+    });
+  }
+  if (fileBoxPendingList) {
+    fileBoxPendingList.addEventListener('click', function (ev) {
+      var btn = ev.target.closest('.filebox-pending-remove');
+      if (!btn) return;
+      var idx = parseInt(btn.getAttribute('data-idx'), 10);
+      if (!isNaN(idx) && idx >= 0 && idx < pendingFiles.length) {
+        pendingFiles.splice(idx, 1);
+        renderPendingFiles();
+      }
+    });
+  }
+  if (btnFileBoxClear) {
+    btnFileBoxClear.addEventListener('click', function () {
+      pendingFiles = [];
+      renderPendingFiles();
+      setFileBoxMessage('', '');
+    });
+  }
+
+  async function loadFileBox() {
+    try {
+      const r = await fetch('/api/files');
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'No se pudo listar archivos');
+      fileBoxCache = data.files || [];
+      renderFileBox();
+    } catch (e) {
+      setFileBoxMessage('Error al cargar archivos: ' + e.message, 'error');
+    }
+  }
+
+  function renderFileBox() {
+    if (!fileBoxList) return;
+    if (!fileBoxCache || fileBoxCache.length === 0) {
+      fileBoxList.innerHTML = '<p class="hint">Sin archivos cargados.</p>';
+      return;
+    }
+    const rows = fileBoxCache.map(function (f) {
+      const badge = f.status === 'validado'
+        ? '<span class="badge-valid">Validado</span>'
+        : '<span class="badge-pending">Pendiente</span>';
+      const actions = [
+        '<a class="filebox-link" href="' + (f.download_url || '#') + '" download>Descargar</a>',
+      ];
+      if (f.status !== 'validado') {
+        actions.push('<button class="btn-file-validate" data-id="' + f.id + '">Marcar validado</button>');
+      }
+      actions.push('<button class="btn-file-delete" data-id="' + f.id + '">Eliminar</button>');
+      const sizeText = f.size_bytes ? Math.round(f.size_bytes / 1024) + ' KB' : '';
+      var typeIcon = (f.file_type === 'pdf') ? 'PDF' : 'XLS';
+      return [
+        '<div class="filebox-item" data-id="' + f.id + '">',
+        '<div class="filebox-main">',
+        '<div class="filebox-name"><span class="filebox-type-icon badge-' + typeIcon.toLowerCase() + '">' + typeIcon + '</span> ' + escapeHtml(f.original_name || f.stored_name) + '</div>',
+        '<div class="filebox-meta">' + badge + ' · ' + escapeHtml(f.file_type || '') + (sizeText ? ' · ' + sizeText : '') + '</div>',
+        f.notes ? '<div class="filebox-notes">Nota: ' + escapeHtml(f.notes) + '</div>' : '',
+        '</div>',
+        '<div class="filebox-actions">' + actions.join(' ') + '</div>',
+        '</div>'
+      ].join('');
+    });
+    fileBoxList.innerHTML = rows.join('');
+  }
+
+  function setFileBoxProgress(pct, text) {
+    if (!fileBoxProgress || !fileBoxProgressBar || !fileBoxProgressText) return;
+    fileBoxProgress.style.display = (pct >= 0) ? 'block' : 'none';
+    fileBoxProgressBar.style.width = Math.min(100, Math.max(0, pct)) + '%';
+    fileBoxProgressText.textContent = text || '';
+  }
+
+  async function uploadFileBox() {
+    if (pendingFiles.length === 0) {
+      setFileBoxMessage('Selecciona al menos un archivo Excel/PDF.', 'error');
+      return;
+    }
+    var totalFiles = pendingFiles.length;
+    var isBulk = totalFiles > 1;
+
+    btnFileBoxUpload && (btnFileBoxUpload.disabled = true);
+    setFileBoxMessage('', '');
+
+    if (isBulk) {
+      setFileBoxProgress(0, 'Subiendo 0 / ' + totalFiles + '…');
+      var uploaded = 0;
+      var failed = 0;
+      var errorMessages = [];
+
+      for (var i = 0; i < totalFiles; i++) {
+        var file = pendingFiles[i];
+        var fd = new FormData();
+        fd.append('file', file);
+        if (chkFileBoxValidated && chkFileBoxValidated.checked) {
+          fd.append('mark_validated', 'true');
+        }
+        var noteVal = (fileBoxNote && fileBoxNote.value.trim()) || '';
+        if (noteVal) fd.append('notes', noteVal);
+
+        try {
+          var r = await fetch('/api/files', { method: 'POST', body: fd });
+          var data = await r.json();
+          if (!data.ok && data.error) throw new Error(data.error);
+          uploaded++;
+        } catch (e) {
+          failed++;
+          errorMessages.push(file.name + ': ' + e.message);
+        }
+        var pct = Math.round(((i + 1) / totalFiles) * 100);
+        setFileBoxProgress(pct, 'Subiendo ' + (i + 1) + ' / ' + totalFiles + '…');
+      }
+
+      setFileBoxProgress(-1, '');
+      var resultMsg = uploaded + ' archivo(s) subido(s) exitosamente.';
+      if (failed > 0) {
+        resultMsg += ' ' + failed + ' fallido(s): ' + errorMessages.join('; ');
+        setFileBoxMessage(resultMsg, 'warn');
+      } else {
+        setFileBoxMessage(resultMsg, 'ok');
+      }
+    } else {
+      setFileBoxMessage('Subiendo…', 'info');
+      var fd = new FormData();
+      fd.append('file', pendingFiles[0]);
+      if (chkFileBoxValidated && chkFileBoxValidated.checked) {
+        fd.append('mark_validated', 'true');
+      }
+      var noteVal = (fileBoxNote && fileBoxNote.value.trim()) || '';
+      if (noteVal) fd.append('notes', noteVal);
+
+      try {
+        var r = await fetch('/api/files', { method: 'POST', body: fd });
+        var data = await r.json();
+        if (!data.ok) throw new Error(data.error || 'Error al subir');
+        setFileBoxMessage('Archivo subido exitosamente.', 'ok');
+      } catch (e) {
+        setFileBoxMessage('Error: ' + e.message, 'error');
+        btnFileBoxUpload && (btnFileBoxUpload.disabled = false);
+        return;
+      }
+    }
+
+    pendingFiles = [];
+    renderPendingFiles();
+    if (fileBoxNote) fileBoxNote.value = '';
+    if (chkFileBoxValidated) chkFileBoxValidated.checked = false;
+    btnFileBoxUpload && (btnFileBoxUpload.disabled = false);
+    await loadFileBox();
+  }
+
+  async function validateFileBox(id) {
+    if (!id) return;
+    setFileBoxMessage('Marcando como validado…', 'info');
+    try {
+      const r = await fetch('/api/files/' + id + '/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Error al validar');
+      setFileBoxMessage('Archivo marcado como validado.', 'ok');
+      await loadFileBox();
+    } catch (e) {
+      setFileBoxMessage('Error: ' + e.message, 'error');
+    }
+  }
+
+  async function deleteFileBox(id) {
+    if (!id) return;
+    if (!confirm('¿Eliminar este archivo? Esta acción no se puede deshacer.')) return;
+    setFileBoxMessage('Eliminando…', 'info');
+    try {
+      const r = await fetch('/api/files/' + id, { method: 'DELETE' });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Error al eliminar');
+      setFileBoxMessage('Archivo eliminado.', 'ok');
+      await loadFileBox();
+    } catch (e) {
+      setFileBoxMessage('Error: ' + e.message, 'error');
+    }
+  }
+
+  if (btnFileBoxUpload) {
+    btnFileBoxUpload.addEventListener('click', uploadFileBox);
+  }
+  if (fileBoxList) {
+    fileBoxList.addEventListener('click', function (ev) {
+      const btnValidate = ev.target.closest('.btn-file-validate');
+      const btnDelete = ev.target.closest('.btn-file-delete');
+      if (btnValidate) {
+        const id = btnValidate.getAttribute('data-id');
+        validateFileBox(id);
+      } else if (btnDelete) {
+        const id = btnDelete.getAttribute('data-id');
+        deleteFileBox(id);
+      }
+    });
+  }
+
   // ── Confirm row ──────────────────────────────────────────────────────────────
 
   function sendConfirmAction(action) {
@@ -950,6 +1244,20 @@
     historialDesde.addEventListener('change', function () { loadHistorial(); });
   }
 
+  function updateKpis(entries) {
+    if (!kpiSummaryEl || !kpiArchivosEl || !kpiFilasEl) return;
+    const archivosExitosos = new Set();
+    let filasExitosas = 0;
+    (entries || []).forEach(function (e) {
+      var exitosos = Number(e.exitosos) || 0;
+      var nombreArchivo = (e.archivo_original || e.archivo || '').trim();
+      if (exitosos > 0 && nombreArchivo) archivosExitosos.add(nombreArchivo);
+      filasExitosas += exitosos;
+    });
+    kpiArchivosEl.textContent = archivosExitosos.size;
+    kpiFilasEl.textContent = filasExitosas;
+  }
+
   function loadHistorial() {
     fetch('/api/historial')
       .then(function (r) { return r.json(); })
@@ -962,6 +1270,7 @@
             return (e.fecha || '') >= desdeVal;
           });
         }
+        updateKpis(entries);
         renderHistorialArchivos(entries);
         renderHistorial(entries);
       })
@@ -1082,6 +1391,91 @@
 
   setupHistorialReload(historialList);
   setupHistorialReload(historialArchivos);
+
+  // ── Tooltips ────────────────────────────────────────────────────────────────
+
+  (function initTooltips() {
+    var bubble = document.createElement('div');
+    bubble.className = 'tooltip-bubble';
+    document.body.appendChild(bubble);
+    var showTimer = null;
+    var hideTimer = null;
+    var activeTarget = null;
+
+    function positionBubble(target) {
+      var rect = target.getBoundingClientRect();
+      var bw = bubble.offsetWidth;
+      var bh = bubble.offsetHeight;
+      var spaceBelow = window.innerHeight - rect.bottom;
+      var above = spaceBelow < bh + 12;
+
+      bubble.classList.toggle('tooltip-above', above);
+
+      var top = above ? rect.top - bh - 8 : rect.bottom + 8;
+      var left = rect.left + (rect.width / 2) - (bw / 2);
+      left = Math.max(8, Math.min(left, window.innerWidth - bw - 8));
+      top = Math.max(4, top);
+
+      bubble.style.top = top + 'px';
+      bubble.style.left = left + 'px';
+
+      var arrowLeft = rect.left + (rect.width / 2) - left;
+      arrowLeft = Math.max(12, Math.min(arrowLeft, bw - 12));
+      bubble.style.setProperty('--arrow-left', arrowLeft + 'px');
+      var arrow = bubble.querySelector('::before') || bubble;
+      bubble.style.cssText += '';
+    }
+
+    function showTooltip(target) {
+      var text = target.getAttribute('data-tooltip');
+      if (!text) return;
+      bubble.textContent = text;
+      bubble.classList.remove('visible', 'tooltip-above');
+      bubble.style.top = '-9999px';
+      bubble.style.left = '-9999px';
+      bubble.style.display = 'block';
+      activeTarget = target;
+
+      requestAnimationFrame(function () {
+        positionBubble(target);
+        requestAnimationFrame(function () {
+          bubble.classList.add('visible');
+        });
+      });
+    }
+
+    function hideTooltip() {
+      bubble.classList.remove('visible');
+      activeTarget = null;
+      setTimeout(function () {
+        if (!activeTarget) bubble.style.display = 'none';
+      }, 200);
+    }
+
+    document.addEventListener('mouseover', function (e) {
+      var target = e.target.closest('[data-tooltip]');
+      if (!target) return;
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      if (activeTarget === target) return;
+      if (showTimer) clearTimeout(showTimer);
+      showTimer = setTimeout(function () { showTooltip(target); }, 400);
+    });
+
+    document.addEventListener('mouseout', function (e) {
+      var target = e.target.closest('[data-tooltip]');
+      if (!target) return;
+      if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+      hideTimer = setTimeout(hideTooltip, 150);
+    });
+
+    document.addEventListener('scroll', function () {
+      if (activeTarget) positionBubble(activeTarget);
+    }, true);
+
+    window.addEventListener('resize', function () {
+      if (activeTarget) hideTooltip();
+    });
+  })();
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 

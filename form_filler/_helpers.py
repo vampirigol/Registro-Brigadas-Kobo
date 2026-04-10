@@ -599,69 +599,9 @@ def _fill_fecha_robust(ctx: FormContext, fecha_value: str, page: Page | None) ->
 
     paths = ["/aD6FdrTDPaW4QzCLjmG7WE/Fecha_de_atenci_n", "aD6FdrTDPaW4QzCLjmG7WE/Fecha_de_atenci_n"]
 
-    # ——— Caso 1: Un solo input (solo el PRIMERO en el formulario, sección Fecha de atención)
-    for path in paths:
-        for attr in ("name", "data-name"):
-            try:
-                sel = f'input[{attr}="{path}"]'
-                loc = ctx.locator(sel).first
-                if loc.count() > 0:
-                    loc.fill(fecha_value)
-                    loc.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); el.dispatchEvent(new Event('blur', { bubbles: true })); }")
-                    if page:
-                        page.wait_for_timeout(50)
-                    if _validate_critical_fields(ctx).get("Fecha_de_atenci_n"):
-                        logger.info("Fecha de atención rellenada (primer input, %s)", attr)
-                        return True
-            except Exception:
-                pass
-
-    # ——— Caso 2: Tres inputs día / mes / año (Enketo a veces usa widgets separados)
-    if parsed:
-        for path in paths:
-            for attr in ("name", "data-name"):
-                for sep in (".", "_", ""):
-                    try:
-                        day_sel = f'input[{attr}="{path}{sep}day"], input[{attr}="{path}{sep}día"]'
-                        month_sel = f'input[{attr}="{path}{sep}month"], input[{attr}="{path}{sep}mes"]'
-                        year_sel = f'input[{attr}="{path}{sep}year"], input[{attr}="{path}{sep}año"]'
-                        loc_d = ctx.locator(day_sel).first
-                        loc_m = ctx.locator(month_sel).first
-                        loc_y = ctx.locator(year_sel).first
-                        if loc_d.count() > 0 and loc_m.count() > 0 and loc_y.count() > 0:
-                            loc_d.fill(day_s)
-                            loc_m.fill(month_s)
-                            loc_y.fill(year_s)
-                            for loc in (loc_d, loc_m, loc_y):
-                                loc.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }")
-                            if page:
-                                page.wait_for_timeout(50)
-                            if _validate_critical_fields(ctx).get("Fecha_de_atenci_n"):
-                                logger.info("Fecha de atención rellenada (día/mes/año)")
-                                return True
-                    except Exception:
-                        pass
-        # Selects para día/mes/año
-        for path in paths:
-            for attr in ("name", "data-name"):
-                try:
-                    sel_d = f'select[{attr}="{path}.day"], select[{attr}="{path}_day"]'
-                    sel_m = f'select[{attr}="{path}.month"], select[{attr}="{path}_month"]'
-                    sel_y = f'select[{attr}="{path}.year"], select[{attr}="{path}_year"]'
-                    ld, lm, ly = ctx.locator(sel_d).first, ctx.locator(sel_m).first, ctx.locator(sel_y).first
-                    if ld.count() > 0 and lm.count() > 0 and ly.count() > 0:
-                        ld.select_option(value=day_s, label=day_s)
-                        lm.select_option(value=month_s, label=month_s)
-                        ly.select_option(value=year_s, label=year_s)
-                        if page:
-                            page.wait_for_timeout(50)
-                        if _validate_critical_fields(ctx).get("Fecha_de_atenci_n"):
-                            logger.info("Fecha de atención rellenada (selects día/mes/año)")
-                            return True
-                except Exception:
-                    pass
-
-    # ——— Caso 3: JS con native setter para Enketo date widgets
+    # ——— Caso 1 (PRIORITARIO): JS con native setter — evita la espera del date-picker widget.
+    # Enketo usa un date-picker que bloquea la interacción directa; el native setter JS
+    # bypasea el widget y escribe directo en el input subyacente sin timeout de UI.
     js_filled = False
     try:
         res = ctx.locator("body").evaluate(
@@ -703,14 +643,76 @@ def _fill_fecha_robust(ctx: FormContext, fecha_value: str, page: Page | None) ->
     except Exception as e:
         logger.warning("Fecha por JS: %s", e)
 
-    # ——— Caso 4: type="date" primero, luego type="text", solo primer match
+    # ——— Caso 2: Un solo input con force=True (no bloquea si el widget rechaza interacción)
+    for path in paths:
+        for attr in ("name", "data-name"):
+            try:
+                sel = f'input[{attr}="{path}"]'
+                loc = ctx.locator(sel).first
+                if loc.count() > 0:
+                    loc.fill(fecha_value, force=True)
+                    loc.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); el.dispatchEvent(new Event('blur', { bubbles: true })); }")
+                    if page:
+                        page.wait_for_timeout(50)
+                    if _validate_critical_fields(ctx).get("Fecha_de_atenci_n"):
+                        logger.info("Fecha de atención rellenada (primer input force, %s)", attr)
+                        return True
+            except Exception:
+                pass
+
+    # ——— Caso 3: Tres inputs día / mes / año (Enketo a veces usa widgets separados)
+    if parsed:
+        for path in paths:
+            for attr in ("name", "data-name"):
+                for sep in (".", "_", ""):
+                    try:
+                        day_sel = f'input[{attr}="{path}{sep}day"], input[{attr}="{path}{sep}día"]'
+                        month_sel = f'input[{attr}="{path}{sep}month"], input[{attr}="{path}{sep}mes"]'
+                        year_sel = f'input[{attr}="{path}{sep}year"], input[{attr}="{path}{sep}año"]'
+                        loc_d = ctx.locator(day_sel).first
+                        loc_m = ctx.locator(month_sel).first
+                        loc_y = ctx.locator(year_sel).first
+                        if loc_d.count() > 0 and loc_m.count() > 0 and loc_y.count() > 0:
+                            loc_d.fill(day_s, force=True)
+                            loc_m.fill(month_s, force=True)
+                            loc_y.fill(year_s, force=True)
+                            for loc in (loc_d, loc_m, loc_y):
+                                loc.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }")
+                            if page:
+                                page.wait_for_timeout(50)
+                            if _validate_critical_fields(ctx).get("Fecha_de_atenci_n"):
+                                logger.info("Fecha de atención rellenada (día/mes/año)")
+                                return True
+                    except Exception:
+                        pass
+        # Selects para día/mes/año
+        for path in paths:
+            for attr in ("name", "data-name"):
+                try:
+                    sel_d = f'select[{attr}="{path}.day"], select[{attr}="{path}_day"]'
+                    sel_m = f'select[{attr}="{path}.month"], select[{attr}="{path}_month"]'
+                    sel_y = f'select[{attr}="{path}.year"], select[{attr}="{path}_year"]'
+                    ld, lm, ly = ctx.locator(sel_d).first, ctx.locator(sel_m).first, ctx.locator(sel_y).first
+                    if ld.count() > 0 and lm.count() > 0 and ly.count() > 0:
+                        ld.select_option(value=day_s, label=day_s)
+                        lm.select_option(value=month_s, label=month_s)
+                        ly.select_option(value=year_s, label=year_s)
+                        if page:
+                            page.wait_for_timeout(50)
+                        if _validate_critical_fields(ctx).get("Fecha_de_atenci_n"):
+                            logger.info("Fecha de atención rellenada (selects día/mes/año)")
+                            return True
+                except Exception:
+                    pass
+
+    # ——— Caso 4: type="date" / type="text" con force=True como último recurso
     for path in paths:
         for typ in ("date", "text"):
             try:
                 sel = f'input[type="{typ}"][name="{path}"], input[type="{typ}"][data-name="{path}"]'
                 loc = ctx.locator(sel).first
                 if loc.count() > 0:
-                    loc.fill(fecha_value)
+                    loc.fill(fecha_value, force=True)
                     loc.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); el.dispatchEvent(new Event('blur', { bubbles: true })); }")
                     if page:
                         page.wait_for_timeout(50)

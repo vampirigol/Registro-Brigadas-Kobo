@@ -13,6 +13,8 @@ import subprocess
 import sys
 import tempfile
 import threading
+from datetime import datetime
+import shutil
 from pathlib import Path
 from queue import Empty, Queue
 
@@ -28,6 +30,18 @@ from coords_store import (
     get_coords_for_lugar,
     parse_coords_string,
     upsert_coords_for_lugar,
+)
+from file_store import (
+    PENDING_DIR,
+    VALIDATED_DIR,
+    add_file_record,
+    delete_file_record,
+    ensure_validated_location,
+    get_file_path,
+    get_file_record,
+    init_files_db,
+    list_file_records,
+    mark_file_validated,
 )
 
 # Coordenadas por defecto para Vizcaíno, BCS
@@ -50,6 +64,10 @@ UPLOAD_DIR = PROJECT_ROOT / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv", "pdf"}
+MAX_UPLOAD_MB = 25  # Límite de tamaño para subidas manuales (MB)
+
+# Inicializar DB ligera para gestión de archivos compartidos
+init_files_db()
 
 # Cola de progreso para SSE (se rellena desde el thread del runner)
 progress_queue: Queue = Queue()
@@ -71,6 +89,17 @@ stop_event = threading.Event()
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _augment_file_entry(entry: dict) -> dict:
+    """Agrega URLs derivadas para el frontend."""
+    if not entry:
+        return entry
+    entry = dict(entry)
+    file_id = entry.get("id")
+    if file_id is not None:
+        entry["download_url"] = f"/api/files/{file_id}/download"
+    return entry
 
 
 @app.route("/")
@@ -180,19 +209,21 @@ def load_excel():
             defaults["Estado_brigada"] = str(first["Estado_brigada"]).strip()
         if str(first.get("Lugar", "")).strip():
             defaults["Lugar"] = str(first["Lugar"]).strip()
-        # Coordenadas: buscar columnas Latitud/Longitud explícitas o Ubicacion_geografica
-        lat_first = str(first.get("Latitud", "")).strip()
-        lon_first = str(first.get("Longitud", "")).strip()
+        # Coordenadas: buscar columnas Latitud/Longitud explícitas o Ubicacion_geografica/Coordenadas
+        lat_first = str(first.get("Latitud", first.get("lat", ""))).strip()
+        lon_first = str(first.get("Longitud", first.get("long", ""))).strip()
         if lat_first and lon_first:
             defaults["Latitud"] = lat_first
             defaults["Longitud"] = lon_first
-        elif str(first.get("Ubicacion_geografica", "")).strip():
-            import re as _re
-            ubi = str(first["Ubicacion_geografica"]).strip()
-            m = _re.match(r"^(-?\d+\.?\d*)\s+(-?\d+\.?\d*)", ubi)
-            if m:
-                defaults["Latitud"] = m.group(1)
-                defaults["Longitud"] = m.group(2)
+            defaults["Ubicacion_geografica"] = f"{lat_first} {lon_first} 0 0"
+        else:
+            coords_raw = str(first.get("Ubicacion_geografica", first.get("Coordenadas", ""))).strip()
+            if coords_raw:
+                lat_p, lon_p, alt_p, acc_p = parse_coords_string(coords_raw)
+                if lat_p and lon_p:
+                    defaults["Latitud"] = lat_p
+                    defaults["Longitud"] = lon_p
+                    defaults["Ubicacion_geografica"] = f"{lat_p} {lon_p} {alt_p or '0'} {acc_p or '0'}".strip()
         # Prefill coordenadas guardadas para este lugar, si el Excel no las trae
         lugar_default = defaults.get("Lugar")
         if lugar_default and (not defaults.get("Latitud") or not defaults.get("Longitud")):
@@ -253,14 +284,26 @@ def extract_pdf():
 
         result = extract_pdf_records(current_pdf_path, backend=backend)
         records = result.get("records", [])
-        current_excel_path = OUT_XLSX
+        # Copia con nombre único en uploads/ para poder recargar el archivo correcto
+        safe_stem = secure_filename((current_original_filename or current_pdf_path.stem).rsplit(".", 1)[0]) or "pdf_extract"
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        excel_name = f"{safe_stem}_extraido_{timestamp}.xlsx"
+        excel_path = UPLOAD_DIR / excel_name
+        try:
+            if OUT_XLSX.exists():
+                shutil.copy(OUT_XLSX, excel_path)
+                current_excel_path = excel_path
+            else:
+                current_excel_path = OUT_XLSX
+        except Exception:
+            current_excel_path = OUT_XLSX
         return jsonify({
             "ok": True,
             "records": records,
             "count": len(records),
             "backend": backend,
-            "excel_filename": OUT_XLSX.name,
-            "excel_path": str(OUT_XLSX),
+            "excel_filename": current_excel_path.name,
+            "excel_path": str(current_excel_path),
         })
     except Exception as e:
         logging.exception("Error en extracción PDF")
@@ -292,13 +335,17 @@ def use_extracted():
     try:
         import pandas as pd
         df = pd.DataFrame(records)
-        out_path = UPLOAD_DIR / "datos_extraidos.xlsx"
+        # Guardar con nombre único para que cada recarga apunte a su archivo
+        base_name = secure_filename((current_original_filename or "datos_extraidos").rsplit(".", 1)[0]) or "datos_extraidos"
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"{base_name}_verificado_{timestamp}.xlsx"
+        out_path = UPLOAD_DIR / filename
         df.to_excel(out_path, index=False, engine="openpyxl")
         current_excel_path = out_path
         current_pdf_path = None
         return jsonify({
             "ok": True,
-            "filename": "datos_extraidos.xlsx",
+            "filename": filename,
             "rows": len(records),
         })
     except Exception as e:
@@ -875,8 +922,130 @@ def save_mapping():
         return jsonify({"error": f"YAML inválido: {e}"}), 400
 
 
+# ── Gestión simple de archivos (subir/descargar/validar) ────────────────────────
+
+
+@app.route("/api/files", methods=["GET"])
+def list_shared_files():
+    """Lista archivos subidos por estado opcional (pendiente/validado)."""
+    status = (request.args.get("status") or "").strip().lower()
+    status_filter = status if status in ("pendiente", "validado") else None
+    files = [_augment_file_entry(f) for f in list_file_records(status_filter)]
+    return jsonify({"ok": True, "files": files})
+
+
+@app.route("/api/files", methods=["POST"])
+def upload_shared_file():
+    """Sube uno o varios archivos a la bóveda simple (pendientes/validados)."""
+    files = request.files.getlist("file")
+    if not files or all(f.filename == "" for f in files):
+        return jsonify({"error": "No se envió ningún archivo"}), 400
+
+    status_param = (request.form.get("status") or request.form.get("mark_validated") or "").strip().lower()
+    target_status = "validado" if status_param in ("1", "true", "yes", "on", "validado", "validated") else "pendiente"
+    dest_dir = VALIDATED_DIR if target_status == "validado" else PENDING_DIR
+    dest_dir.mkdir(exist_ok=True, parents=True)
+    notes = (request.form.get("notes") or "").strip() or None
+
+    results = []
+    errors = []
+    for uploaded in files:
+        if uploaded.filename == "":
+            continue
+        if not allowed_file(uploaded.filename):
+            errors.append({"filename": uploaded.filename, "error": "Tipo de archivo no permitido"})
+            continue
+
+        ext = uploaded.filename.rsplit(".", 1)[1].lower()
+        original_name = uploaded.filename
+        safe_name = secure_filename(original_name) or f"archivo.{ext}"
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        stored_name = f"{timestamp}_{safe_name}"
+        dest_path = dest_dir / stored_name
+
+        try:
+            uploaded.save(dest_path)
+            size_bytes = dest_path.stat().st_size if dest_path.exists() else None
+            if size_bytes and size_bytes > MAX_UPLOAD_MB * 1024 * 1024:
+                dest_path.unlink(missing_ok=True)
+                errors.append({"filename": original_name, "error": f"Excede {MAX_UPLOAD_MB} MB"})
+                continue
+            record = add_file_record(
+                original_name=original_name,
+                stored_name=stored_name,
+                file_type="pdf" if ext == "pdf" else "excel",
+                status=target_status,
+                size_bytes=size_bytes,
+                notes=notes,
+            )
+            results.append(_augment_file_entry(record))
+        except Exception as exc:
+            errors.append({"filename": original_name, "error": str(exc)})
+
+    if len(results) == 1 and not errors:
+        return jsonify({"ok": True, "file": results[0]})
+    return jsonify({
+        "ok": len(results) > 0,
+        "files": results,
+        "errors": errors,
+        "uploaded": len(results),
+        "failed": len(errors),
+    })
+
+
+@app.route("/api/files/<int:file_id>/download", methods=["GET"])
+def download_shared_file(file_id: int):
+    """Descarga un archivo pendiente o validado."""
+    entry = get_file_record(file_id)
+    if not entry:
+        return jsonify({"error": "Archivo no encontrado"}), 404
+    path = get_file_path(entry)
+    if not path.exists():
+        return jsonify({"error": "El archivo ya no está disponible en el servidor"}), 404
+    return send_file(
+        str(path),
+        as_attachment=True,
+        download_name=entry.get("original_name") or entry.get("stored_name"),
+    )
+
+
+@app.route("/api/files/<int:file_id>/validate", methods=["POST"])
+def validate_shared_file(file_id: int):
+    """Marca un archivo como validado y lo mueve a la carpeta de validados."""
+    entry = get_file_record(file_id)
+    if not entry:
+        return jsonify({"error": "Archivo no encontrado"}), 404
+
+    data = request.get_json(silent=True) or {}
+    validated_by = (data.get("validated_by") or "").strip() or None
+    notes = (data.get("notes") or "").strip() or None
+
+    ensure_validated_location(entry)
+    updated = mark_file_validated(file_id, validated_by=validated_by, notes=notes) or entry
+    return jsonify({"ok": True, "file": _augment_file_entry(updated)})
+
+
+@app.route("/api/files/<int:file_id>", methods=["DELETE"])
+def delete_shared_file(file_id: int):
+    """Elimina el registro y el archivo físico."""
+    entry = get_file_record(file_id)
+    if not entry:
+        return jsonify({"error": "Archivo no encontrado"}), 404
+    path = get_file_path(entry)
+    try:
+        path.unlink(missing_ok=True)
+    except Exception:
+        pass
+    delete_file_record(file_id)
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s.%(msecs)03d %(levelname)s:%(name)s:%(message)s",
+        datefmt="%H:%M:%S",
+    )
     # Puerto 5001 por defecto: en macOS el 5000 suele estar ocupado por AirPlay
     port = int(os.environ.get("PORT", 5001))
     print(f"\n  Abre: http://localhost:{port}\n")

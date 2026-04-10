@@ -9,6 +9,7 @@ Módulos internos:
 
 import logging
 import platform
+import time
 from typing import Callable
 
 from playwright.sync_api import Page, sync_playwright, TimeoutError as PlaywrightTimeout
@@ -184,11 +185,9 @@ class FormFiller:
                     wait_until="networkidle" if USE_DIRECT_FORM_URL else "domcontentloaded",
                     timeout=40000,
                 )
-                try:
-                    form_page.wait_for_load_state("networkidle", timeout=20000)
-                except Exception:
-                    pass
-                form_page.wait_for_timeout(1000)
+                # Para URL directa ya se esperó networkidle en goto; solo un buffer mínimo.
+                # Para APP_URL (domcontentloaded) el iframe aún puede estar cargando.
+                form_page.wait_for_timeout(300 if USE_DIRECT_FORM_URL else 700)
             except PlaywrightTimeout:
                 pass
 
@@ -198,7 +197,7 @@ class FormFiller:
                 logger.info("Enketo ready (form.or:not(.loading) visible)")
             except Exception:
                 # Fallback: esperar tiempo fijo si el selector no aplica (Enketo version distinta)
-                form_page.wait_for_timeout(1000)
+                form_page.wait_for_timeout(800)
 
             # Obtener candidatos de contexto (iframe, anidado, documento principal)
             candidates = _get_form_contexts_candidates(form_page)
@@ -254,37 +253,47 @@ class FormFiller:
                     "Fecha_de_atenci_n. Ejecuta python diagnostic_form.py para ver los nombres reales."
                 )
 
-            # Consentimiento ya marcado; refuerzo por compatibilidad
-            _ensure_consent_marked(ctx, form_page)
-            form_page.wait_for_timeout(100)
+            # Consentimiento ya confirmado por _validate_critical_fields (CONS1=True).
+            # Solo reforzar si la validación no pudo confirmarlo (e.g. widget no estándar).
+            if not valid.get("CONS1"):
+                _ensure_consent_marked(ctx, form_page)
+                form_page.wait_for_timeout(100)
 
+            _t_js_start = time.perf_counter()
             filled_js = _fill_all_via_js(ctx, record, self.mapping, form_page)
-            form_page.wait_for_timeout(150)
+            form_page.wait_for_timeout(100)
+            _t_js_end = time.perf_counter()
+            logger.info("JS fill tardó %.2f s", _t_js_end - _t_js_start)
 
-            _log_field_diagnostics(ctx, self.mapping, record)
+            # Diagnóstico de campos: solo en la primera fila para no penalizar cada envío.
+            if row_index == 0:
+                _log_field_diagnostics(ctx, self.mapping, record)
 
-            # Respaldo: llenado página por página (siempre, para cubrir campos condicionales
-            # que JS fill no puede alcanzar porque XForms los muestra de forma asíncrona)
+            # Respaldo: avanza página por página y rellena con JS batch en cada una.
+            # Usar _fill_all_via_js por página en vez de _fill_field_in_frame por campo:
+            # una sola llamada evaluate() corre todo dentro del browser sin round-trips CDP,
+            # cubriendo los campos condicionales que Enketo añade al DOM de forma asíncrona.
             filled_total = filled_js
             _total_mapping_fields = sum(1 for col in self.mapping if str(record.get(col, "")).strip())
             logger.info("JS fill cubrió %d/%d campos; ejecutando bucle de respaldo para campos condicionales",
                         filled_js, _total_mapping_fields)
-            max_pages = 8
-            for _ in range(max_pages):
-                for col, field_path in self.mapping.items():
-                    val = str(record.get(col, "")).strip()
-                    if not val:
-                        continue
-                    # Modalidad: filling_rules ya envía "1" (value real del form = Móvil)
-                    if col == "Modalidad_de_la_atenci_n":
-                        val = "1"
-                    _fill_ok = _fill_field_in_frame(ctx, field_path, val, force=True)
-                    if _fill_ok:
-                        filled_total += 1
-                        if col in ("POC", "Modalidad_de_la_atenci_n"):
-                            form_page.wait_for_timeout(100)
-                        if col == "NAT":
-                            form_page.wait_for_timeout(50)
+
+            _t_backup_start = time.perf_counter()
+            max_pages = 6
+            for _page_num in range(max_pages):
+                _t_page_start = time.perf_counter()
+
+                # Una sola llamada JS por página — cubre todos los campos visibles
+                # en el DOM actual sin múltiples round-trips por campo/selector.
+                _page_filled = _fill_all_via_js(ctx, record, self.mapping, form_page)
+                filled_total += _page_filled
+
+                logger.info(
+                    "Respaldo pág %d: %d campos llenados por JS batch (%.2f s)",
+                    _page_num + 1,
+                    _page_filled,
+                    time.perf_counter() - _t_page_start,
+                )
                 form_page.wait_for_timeout(50)
 
                 next_clicked = False
@@ -293,7 +302,7 @@ class FormFiller:
                         btn = ctx.locator(sel).first
                         if btn.count() > 0:
                             btn.click(force=True)
-                            form_page.wait_for_timeout(150)
+                            form_page.wait_for_timeout(100)
                             next_clicked = True
                             break
                     except Exception:
@@ -301,7 +310,11 @@ class FormFiller:
                 if not next_clicked:
                     break
 
-            logger.info("Rellenados %d campos en total", filled_total)
+            logger.info(
+                "Bucle de respaldo terminado: %d campos en total (%.2f s)",
+                filled_total,
+                time.perf_counter() - _t_backup_start,
+            )
 
             if wait_for_confirm and confirm_callback:
                 if not confirm_callback():

@@ -442,6 +442,102 @@ def _map_diagnostico_dental(text: str) -> tuple[str, str]:
     return MULTISELECT_SEP.join(matched), especificar
 
 
+# ── Procedimientos odontológicos (etiquetas exactas del formulario) ───────────
+PROC_DENTAL_OPTIONS = [
+    "Resina",
+    "Limpieza dental",
+    "Endodoncia",
+    "Extracción",
+    "Cirugía",
+    "Otro",
+]
+
+_PROC_DENTAL_ALIASES: dict[str, str] = {
+    "resina":                   "Resina",
+    "restauracion":             "Resina",
+    "restauración":             "Resina",
+    "obturacion":               "Resina",
+    "obturación":               "Resina",
+    "empaste":                  "Resina",
+    "composite":                "Resina",
+    "limpieza":                 "Limpieza dental",
+    "limpieza dental":          "Limpieza dental",
+    "profilaxis":               "Limpieza dental",
+    "detartraje":               "Limpieza dental",
+    "tartrectomia":             "Limpieza dental",
+    "tartrectomía":             "Limpieza dental",
+    "endodoncia":               "Endodoncia",
+    "tratamiento de conducto":  "Endodoncia",
+    "conducto":                 "Endodoncia",
+    "extraccion":               "Extracción",
+    "extracción":               "Extracción",
+    "exodoncia":                "Extracción",
+    "cirugia":                  "Cirugía",
+    "cirugía":                  "Cirugía",
+    "cirugia dental":           "Cirugía",
+    "cirugía dental":           "Cirugía",
+    "otro":                     "Otro",
+    "otros":                    "Otro",
+}
+
+
+def _map_procedimiento_dental(text: str) -> tuple[str, str]:
+    """
+    Mapea el texto de la columna 'Procedimiento_dental' del Excel a las opciones
+    del formulario (_Qupe_procedimiento_se_realiza).
+    Retorna (proc_value, especificar_003):
+      proc_value      → opciones separadas por ||| para el checkbox
+      especificar_003 → texto libre cuando cae en "Otro"
+    """
+    text = str(text or "").strip()
+    if not text:
+        return "", ""
+
+    alias_norm = {_norm_str(k): v for k, v in _PROC_DENTAL_ALIASES.items()}
+    opts_norm  = {_norm_str(o): o for o in PROC_DENTAL_OPTIONS if o != "Otro"}
+
+    matched: list[str] = []
+    unmatched: list[str] = []
+
+    parts = [p.strip() for p in re.split(r"[,;\n/]+", text) if p.strip()]
+    if not parts:
+        parts = [text]
+
+    for part in parts:
+        norm = _norm_str(part)
+        found: str | None = alias_norm.get(norm) or opts_norm.get(norm)
+
+        if not found:
+            for k, v in alias_norm.items():
+                if k and len(k) > 3 and k in norm:
+                    found = v
+                    break
+
+        if not found:
+            for norm_opt, original_opt in opts_norm.items():
+                if norm_opt and len(norm_opt) > 3 and norm_opt in norm:
+                    found = original_opt
+                    break
+
+        if found:
+            if found not in matched:
+                matched.append(found)
+        else:
+            unmatched.append(part)
+
+    especificar = ""
+    if unmatched:
+        if "Otro" not in matched:
+            matched.append("Otro")
+        especificar = ", ".join(unmatched)
+
+    if not matched:
+        matched = ["Otro"]
+        especificar = text
+
+    return MULTISELECT_SEP.join(matched), especificar
+
+
 # Mapa de variaciones textuales → valor DIS exacto del formulario
 DIS_VALUE_ALIASES: dict[str, str] = {
     "motriz":       "motriz",
@@ -763,6 +859,15 @@ def apply_rules(
             )
             out["_Se_realiza_procedimiento_odon"] = "Si" if _hay_proc else "No"
 
+        # 3. ¿Qué procedimiento se realiza? → desde nueva columna del Excel
+        proc_raw = str(record.get("Procedimiento_dental", "")).strip()
+        if proc_raw:
+            proc_val, proc_esp = _map_procedimiento_dental(proc_raw)
+            if proc_val:
+                out["_Qupe_procedimiento_se_realiza"] = proc_val
+            if proc_esp:
+                out["Especificar_003"] = proc_esp
+
     # ── FISIOTERAPIA: Diagnóstico ─────────────────────────────────────────────
     _servicio_fisio = _norm_str(out.get("Servicio_que_se_brinda", ""))
     if "fisioterapia" in _servicio_fisio:
@@ -955,8 +1060,8 @@ def apply_rules(
     #   2. Columna Ubicacion_geografica ya con formato "lat lon alt prec"
     #   3. Coordenadas guardadas previamente para este lugar (persistentes)
     #   4. Geocodificación automática por nombre de lugar (Nominatim + fallback)
-    lat_excel = str(record.get("Latitud", "")).strip()
-    lon_excel = str(record.get("Longitud", "")).strip()
+    lat_excel = str(record.get("Latitud", record.get("lat", ""))).strip()
+    lon_excel = str(record.get("Longitud", record.get("long", ""))).strip()
     lookup_lugar = lugar or estado_brigada
     coords = ""
     coords_source = ""
@@ -966,11 +1071,14 @@ def apply_rules(
     else:
         ubicacion_raw = str(record.get(
             "Ubicacion_geografica",
-            record.get("Ubicaci_n_geogr_fica_de_la_atenci_n", "")
+            record.get("Ubicaci_n_geogr_fica_de_la_atenci_n",
+                       record.get("Coordenadas", ""))
         )).strip()
-        # Si ya viene en formato "lat lon ..." no llamamos a la API
-        if ubicacion_raw and re.match(r"^-?\d+\.?\d*\s+-?\d+\.?\d*", ubicacion_raw):
-            coords = ubicacion_raw
+        lat_p = lon_p = alt_p = acc_p = ""
+        if ubicacion_raw:
+            lat_p, lon_p, alt_p, acc_p = parse_coords_string(ubicacion_raw)
+        if lat_p and lon_p:
+            coords = f"{lat_p} {lon_p} {alt_p or '0'} {acc_p or '0'}".strip()
             coords_source = "record"
         else:
             # Coordenadas persistidas para este lugar (si el usuario las capturó antes)

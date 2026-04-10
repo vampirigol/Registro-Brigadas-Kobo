@@ -15,26 +15,26 @@
   <div class="app-layout">
     <aside class="controls-panel">
     <header>
-      <h1>Carga masiva a KoboToolbox</h1>
+      <h1 data-tooltip="Sistema para cargar datos de pacientes desde archivos Excel/CSV/PDF al formulario de KoboToolbox de forma automática y masiva.">Carga masiva a KoboToolbox</h1>
       <p class="subtitle">Sube tu Excel (Consolidación de Brigada) y llena el formulario automáticamente.</p>
     </header>
 
     <section class="flow-steps card">
       <h2>Flujo de carga</h2>
       <ol class="steps-list">
-        <li class="step" id="step1"><strong>Subir Excel</strong> — Arrastra o selecciona el archivo</li>
-        <li class="step" id="step2"><strong>Opcional: Verificar</strong> — Revisa o edita los datos</li>
-        <li class="step" id="step3"><strong>Iniciar</strong> — El llenado automático corre en segundo plano; el progreso se muestra aquí</li>
+        <li class="step" id="step1" data-tooltip="Primer paso: sube tu archivo Excel de consolidación de brigada, un CSV o un PDF escaneado con los datos de los pacientes."><strong>Subir Excel</strong> — Arrastra o selecciona el archivo</li>
+        <li class="step" id="step2" data-tooltip="Paso opcional: revisa los datos extraídos del archivo en una tabla editable. Puedes corregir valores, cambiar selecciones y elegir qué filas cargar."><strong>Opcional: Verificar</strong> — Revisa o edita los datos</li>
+        <li class="step" id="step3" data-tooltip="Último paso: el sistema abre el formulario de KoboToolbox y llena automáticamente cada fila. El progreso se muestra en tiempo real."><strong>Iniciar</strong> — El llenado automático corre en segundo plano; el progreso se muestra aquí</li>
       </ol>
     </section>
 
     <section class="config card">
       <h2>Configuración</h2>
-      <p class="form-url"><strong>Formulario:</strong> <a id="formUrl" href="#" target="_blank" rel="noopener">—</a></p>
-      <p id="mappingStatus" class="mapping-status">Cargando mapeo…</p>
+      <p class="form-url"><strong>Formulario:</strong> <a id="formUrl" href="#" target="_blank" rel="noopener" data-tooltip="URL del formulario web de KoboToolbox donde se enviarán los datos de cada paciente. Haz clic para abrirlo en otra pestaña.">—</a></p>
+      <p id="mappingStatus" class="mapping-status" data-tooltip="Indica si el archivo mapping.yaml está configurado correctamente. Este archivo define qué columna del Excel corresponde a qué campo del formulario.">Cargando mapeo…</p>
       <div class="config-actions">
-        <button type="button" id="btnDiscover" class="btn btn-small btn-secondary">Actualizar mapeo desde formulario</button>
-        <button type="button" id="btnMappingEditor" class="btn btn-small btn-secondary">Editar mapping.yaml</button>
+        <button type="button" id="btnDiscover" class="btn btn-small btn-secondary" data-tooltip="Ejecuta un análisis automático del formulario web para descubrir los campos disponibles y generar un mapping. Puede tardar hasta 2 minutos.">Actualizar mapeo desde formulario</button>
+        <button type="button" id="btnMappingEditor" class="btn btn-small btn-secondary" data-tooltip="Abre un editor de texto para modificar manualmente el archivo mapping.yaml que define la correspondencia entre columnas del Excel y campos del formulario.">Editar mapping.yaml</button>
       </div>
     </section>
 
@@ -42,18 +42,18 @@
     <section id="mappingEditorSection" class="mapping-editor card" style="display:none">
       <h2>Editor de mapping.yaml</h2>
       <p class="hint">Edita el mapeo de columnas Excel → campos del formulario. Un campo por línea: <code>NombreExcel: /ruta/campo</code></p>
-      <textarea id="mappingTextarea" class="mapping-textarea" spellcheck="false" rows="12"></textarea>
+      <textarea id="mappingTextarea" class="mapping-textarea" spellcheck="false" rows="12" data-tooltip="Escribe aquí el mapeo. Cada línea debe tener el formato: NombreColumnaExcel: /ruta/campo/formulario. Usa el botón 'Copiar desde mapping_discovered' para obtener una base automática."></textarea>
       <div class="mapping-editor-actions">
-        <button type="button" id="btnSaveMapping" class="btn btn-primary btn-small">Guardar mapping</button>
-        <button type="button" id="btnCancelMapping" class="btn btn-secondary btn-small">Cancelar</button>
-        <button type="button" id="btnCopyDiscovered" class="btn btn-secondary btn-small" style="display:none">Copiar desde mapping_discovered</button>
+        <button type="button" id="btnSaveMapping" class="btn btn-primary btn-small" data-tooltip="Guarda el mapping editado en el servidor. Los campos se aplicarán en la próxima carga.">Guardar mapping</button>
+        <button type="button" id="btnCancelMapping" class="btn btn-secondary btn-small" data-tooltip="Cierra el editor sin guardar los cambios realizados.">Cancelar</button>
+        <button type="button" id="btnCopyDiscovered" class="btn btn-secondary btn-small" style="display:none" data-tooltip="Copia el mapping generado automáticamente por el descubrimiento de campos al editor para que puedas revisarlo y ajustarlo.">Copiar desde mapping_discovered</button>
       </div>
       <p id="mappingEditorMsg" class="mapping-editor-msg"></p>
     </section>
 
     <section class="upload card">
       <h2>1. Subir archivo</h2>
-      <div class="upload-zone" id="uploadZone">
+      <div class="upload-zone" id="uploadZone" data-tooltip="Arrastra un archivo aquí o haz clic para seleccionarlo. Se aceptan archivos Excel (.xlsx, .xls), CSV (.csv) o PDF (formularios escaneados). El archivo se sube al servidor y se prepara para la carga.">
         <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf" hidden>
         <p id="uploadLabel">Arrastra tu <strong>Excel</strong>, <strong>CSV</strong> o <strong>PDF</strong> (formulario escaneado) o haz clic</p>
         <p id="uploadedFile" class="uploaded-file"></p>
@@ -64,11 +64,11 @@
       <h2>3. Iniciar carga</h2>
       <p class="hint">El llenado automático corre en segundo plano con Playwright. Puedes seguir el progreso en la sección inferior.</p>
       <div class="defaults-form">
-        <label>Estado de la brigada: <input type="text" id="inputEstadoBrigada" placeholder="ej. BCS, Chihuahua"></label>
-        <label>Lugar (colegio/comunidad): <input type="text" id="inputLugar" placeholder="ej. Escuela Primaria X"></label>
+        <label data-tooltip="Estado de la República Mexicana donde opera la brigada médica. Se aplica a todos los registros que no traigan estado propio en el Excel.">Estado de la brigada: <input type="text" id="inputEstadoBrigada" placeholder="ej. BCS, Chihuahua"></label>
+        <label data-tooltip="Nombre del lugar, colegio o comunidad donde se realizó la atención médica. Si el sistema reconoce el nombre, las coordenadas GPS se llenan automáticamente.">Lugar (colegio/comunidad): <input type="text" id="inputLugar" placeholder="ej. Escuela Primaria X"></label>
         <div class="geo-fields">
-          <label class="geo-label">Latitud: <input type="number" id="inputLatitud" step="any" placeholder="ej. 27.3376"></label>
-          <label class="geo-label">Longitud: <input type="number" id="inputLongitud" step="any" placeholder="ej. -112.2707"></label>
+          <label class="geo-label" data-tooltip="Coordenada de latitud GPS del lugar de atención. Se usa para geolocalizar el registro en KoboToolbox. Ejemplo: 27.3376">Latitud: <input type="number" id="inputLatitud" step="any" placeholder="ej. 27.3376"></label>
+          <label class="geo-label" data-tooltip="Coordenada de longitud GPS del lugar de atención. Generalmente es un número negativo en México. Ejemplo: -112.2707">Longitud: <input type="number" id="inputLongitud" step="any" placeholder="ej. -112.2707"></label>
         </div>
         <p class="hint small" id="coordsHint" style="display:none"></p>
         <p class="hint small">Si el Excel ya trae Estado, Lugar o coordenadas, se rellenan solos. Las coordenadas se aplican a todos los registros que no las tengan.</p>
@@ -76,25 +76,25 @@
       <div class="resume-form" id="resumeForm" style="display:none">
         <label class="resume-label">
           Reanudar desde fila (0-indexed):
-          <input type="number" id="inputStartRow" min="0" step="1" placeholder="ej. 5">
+          <input type="number" id="inputStartRow" min="0" step="1" placeholder="ej. 5" data-tooltip="Número de fila desde donde reanudar la carga si se interrumpió previamente. La numeración empieza en 0. Útil para continuar después de un error o pausa.">
           <span class="hint small" id="checkpointHint"></span>
         </label>
       </div>
       <div class="mode-toggle">
         <label class="toggle-label">
           <input type="checkbox" id="chkModoAutomatico" checked>
-          <span>Modo automático</span> — Envía sin pedir validar cada fila (más rápido)
+          <span data-tooltip="Cuando está activado, cada fila se llena y se envía automáticamente sin esperar confirmación manual. Desactívalo si quieres revisar cada formulario antes de enviarlo.">Modo automático</span> — Envía sin pedir validar cada fila (más rápido)
         </label>
       </div>
       <div class="mode-toggle" id="apiToggleWrap" style="display:none">
         <label class="toggle-label">
           <input type="checkbox" id="chkUsarApi">
-          <span>Enviar por API KoboToolbox</span> — Más preciso, sin abrir navegador (requiere token en .env)
+          <span data-tooltip="Envía los datos directamente a la API de KoboToolbox sin necesidad de abrir un navegador. Es más rápido y preciso, pero requiere que el token de API esté configurado en el archivo .env del servidor.">Enviar por API KoboToolbox</span> — Más preciso, sin abrir navegador (requiere token en .env)
         </label>
       </div>
       <div class="start-actions">
-        <button type="button" id="btnStart" class="btn btn-primary btn-large" disabled>Iniciar carga</button>
-        <button type="button" id="btnStop" class="btn btn-danger btn-large" style="display:none">Detener</button>
+        <button type="button" id="btnStart" class="btn btn-primary btn-large" disabled data-tooltip="Inicia el proceso de llenado automático. El sistema abrirá el formulario web y llenará cada fila seleccionada del Excel. Requiere tener un archivo subido y el mapping configurado.">Iniciar carga</button>
+        <button type="button" id="btnStop" class="btn btn-danger btn-large" style="display:none" data-tooltip="Detiene el proceso de carga en curso. Las filas ya enviadas no se pierden. Puedes reanudar después desde la última fila exitosa.">Detener</button>
       </div>
     </section>
 
@@ -102,31 +102,66 @@
       <h2>Validar fila cargada</h2>
       <p class="hint">Revisa el formulario en el panel derecho (o en la ventana si se abrió). Si está bien, Valida. Si no, Omite.</p>
       <div class="confirm-buttons">
-        <button type="button" id="btnValidateSend" class="btn btn-primary">Validar y enviar</button>
-        <button type="button" id="btnSkipRow" class="btn btn-secondary">Omitir fila</button>
+        <button type="button" id="btnValidateSend" class="btn btn-primary" data-tooltip="Confirma que los datos cargados en el formulario son correctos y procede a enviarlo a KoboToolbox.">Validar y enviar</button>
+        <button type="button" id="btnSkipRow" class="btn btn-secondary" data-tooltip="Omite esta fila sin enviarla y continúa con la siguiente. La fila omitida quedará marcada como fallida en el reporte.">Omitir fila</button>
       </div>
     </section>
 
     <section class="progress card">
       <h2>Progreso</h2>
-      <div class="progress-bar-wrap">
+      <div class="progress-bar-wrap" data-tooltip="Barra de progreso que muestra el avance de la carga. Se actualiza conforme cada fila es procesada.">
         <div class="progress-bar" id="progressBar" style="width: 0%"></div>
       </div>
       <p class="progress-text" id="progressText">—</p>
       <div class="stats" id="stats">
-        <span>Exitosos: <strong id="statOk">0</strong></span>
-        <span>Fallidos: <strong id="statFail">0</strong></span>
-        <span>Tiempo: <strong id="statTime">—</strong></span>
+        <span data-tooltip="Cantidad de filas que se llenaron y enviaron correctamente al formulario de KoboToolbox.">Exitosos: <strong id="statOk">0</strong></span>
+        <span data-tooltip="Cantidad de filas que fallaron durante el proceso de carga. Puedes descargar el log de errores para ver los detalles.">Fallidos: <strong id="statFail">0</strong></span>
+        <span data-tooltip="Tiempo total transcurrido desde el inicio de la carga hasta su finalización.">Tiempo: <strong id="statTime">—</strong></span>
       </div>
       <div class="progress-actions" id="progressActions" style="display:none">
-        <a id="btnDownloadLogs" href="/api/logs/download" class="btn btn-secondary btn-small" download>Descargar log de errores</a>
+        <a id="btnDownloadLogs" href="/api/logs/download" class="btn btn-secondary btn-small" download data-tooltip="Descarga un archivo con el detalle de todos los errores que ocurrieron durante la carga. Útil para diagnosticar problemas.">Descargar log de errores</a>
       </div>
-      <div class="log" id="log"></div>
+      <div class="log" id="log" data-tooltip="Registro en tiempo real de las acciones del sistema. Verde = éxito, rojo = error, azul = informativo."></div>
     </section>
 
     </aside>
 
     <main class="content-panel">
+      <section class="filebox card">
+        <h2>Gestión de archivos Excel/PDF</h2>
+        <p class="hint">Sube uno o varios archivos Excel/PDF. Puedes arrastrarlos o seleccionarlos.</p>
+        <div class="filebox-dropzone" id="fileBoxDropzone" data-tooltip="Arrastra uno o varios archivos Excel/CSV/PDF aquí, o haz clic para seleccionarlos desde tu computadora.">
+          <input type="file" id="fileBoxInput" accept=".xlsx,.xls,.csv,.pdf" multiple hidden>
+          <div class="filebox-dropzone-content">
+            <span class="filebox-dropzone-icon">+</span>
+            <span class="filebox-dropzone-text">Arrastra archivos aquí o <strong>haz clic para seleccionar</strong></span>
+            <span class="filebox-dropzone-formats">Excel (.xlsx, .xls), CSV (.csv) o PDF (.pdf)</span>
+          </div>
+        </div>
+        <div id="fileBoxPending" class="filebox-pending" style="display:none">
+          <div class="filebox-pending-header">
+            <span id="fileBoxPendingCount" class="filebox-pending-count"></span>
+            <button type="button" id="btnFileBoxClear" class="btn btn-secondary btn-small">Limpiar</button>
+          </div>
+          <ul id="fileBoxPendingList" class="filebox-pending-list"></ul>
+          <div class="filebox-upload-options">
+            <label class="inline-checkbox" data-tooltip="Si marcas esta casilla, los archivos se suben con estatus 'validado'.">
+              <input type="checkbox" id="chkFileBoxValidated"> Subir como validados
+            </label>
+            <input type="text" id="fileBoxNote" placeholder="Nota opcional (ej. versión corregida)" data-tooltip="Agrega una nota descriptiva a todos los archivos del lote.">
+          </div>
+          <button type="button" id="btnFileBoxUpload" class="btn btn-primary" data-tooltip="Sube todos los archivos seleccionados al repositorio compartido.">Subir archivos</button>
+        </div>
+        <div id="fileBoxProgress" class="filebox-progress" style="display:none">
+          <div class="filebox-progress-bar-wrap">
+            <div class="filebox-progress-bar" id="fileBoxProgressBar" style="width:0%"></div>
+          </div>
+          <p class="filebox-progress-text" id="fileBoxProgressText">Subiendo…</p>
+        </div>
+        <p id="fileBoxMessage" class="hint"></p>
+        <div id="fileBoxList" class="filebox-list"></div>
+      </section>
+
       <section id="verifySection" class="verify card" style="display:none">
         <h2>2. Verificar datos <span class="badge optional">opcional</span></h2>
         <p class="hint">Revisa o edita antes de cargar. Elige qué filas cargar (por defecto todas están seleccionadas).</p>
@@ -135,25 +170,37 @@
           <table id="dataTable" class="data-table"></table>
         </div>
         <div class="verify-actions">
-          <button type="button" id="btnSelectAll" class="btn btn-small">Seleccionar todas</button>
-          <button type="button" id="btnSelectNone" class="btn btn-small">Quitar selección</button>
-          <button type="button" id="btnConfirm" class="btn btn-primary">Guardar cambios y continuar</button>
+          <button type="button" id="btnSelectAll" class="btn btn-small" data-tooltip="Marca todas las filas de la tabla para incluirlas en la carga a KoboToolbox.">Seleccionar todas</button>
+          <button type="button" id="btnSelectNone" class="btn btn-small" data-tooltip="Desmarca todas las filas. Útil para seleccionar manualmente solo algunas filas específicas.">Quitar selección</button>
+          <button type="button" id="btnConfirm" class="btn btn-primary" data-tooltip="Guarda los cambios que hayas hecho en la tabla (edición de celdas) y actualiza el archivo Excel en el servidor. Los datos editados se usarán al iniciar la carga.">Guardar cambios y continuar</button>
         </div>
       </section>
 
       <!-- Historial de cargas (debajo de la tabla de datos) -->
       <section class="historial card">
-        <h2 class="historial-toggle" id="historialToggle">
+        <h2 class="historial-toggle" id="historialToggle" data-tooltip="Haz clic para ver u ocultar el historial de todas las cargas realizadas. Incluye estadísticas de archivos y filas enviadas.">
           Historial de cargas
           <span class="historial-chevron">▾</span>
         </h2>
         <div id="historialContent" class="historial-content" style="display:none">
           <div class="historial-header-actions">
             <div class="historial-filter-wrap">
-              <label class="historial-filter-label">Desde:
+              <label class="historial-filter-label" data-tooltip="Filtra el historial mostrando solo las cargas realizadas a partir de esta fecha.">Desde:
                 <input type="date" id="historialDesde" class="historial-date-input">
               </label>
-              <button type="button" id="btnRefreshHistorial" class="btn btn-secondary btn-small">Actualizar</button>
+              <button type="button" id="btnRefreshHistorial" class="btn btn-secondary btn-small" data-tooltip="Recarga el historial con los datos más recientes del servidor.">Actualizar</button>
+            </div>
+          </div>
+          <div id="kpiSummary" class="kpi-grid">
+            <div class="kpi-card" data-tooltip="Cantidad de archivos Excel distintos que tuvieron al menos una fila cargada exitosamente a KoboToolbox en el período seleccionado.">
+              <div class="kpi-label">Archivos con éxito</div>
+              <div class="kpi-value" id="kpiArchivos">0</div>
+              <div class="kpi-sub">Con al menos 1 fila enviada</div>
+            </div>
+            <div class="kpi-card" data-tooltip="Número total de pacientes (filas) que se enviaron exitosamente al formulario de KoboToolbox en el período seleccionado.">
+              <div class="kpi-label">Filas exitosas</div>
+              <div class="kpi-value" id="kpiFilas">0</div>
+              <div class="kpi-sub">Pacientes enviados en total</div>
             </div>
           </div>
           <div id="historialArchivos" class="historial-archivos"></div>
@@ -162,6 +209,6 @@
       </section>
     </main>
   </div>
-  <script src="/static/app.js?v=13"></script>
+  <script src="/static/app.js?v=15"></script>
 </body>
 </html>
