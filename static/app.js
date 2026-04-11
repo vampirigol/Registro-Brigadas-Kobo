@@ -23,6 +23,7 @@
   const btnSkipRow = document.getElementById('btnSkipRow');
   const progressActionsEl = document.getElementById('progressActions');
   const validationSummaryEl = document.getElementById('validationSummary');
+  const validationDetailEl = document.getElementById('validationDetail');
   const pdfDataTableEl = document.getElementById('pdfDataTable');
   const btnDownloadExtracted = document.getElementById('btnDownloadExtracted');
 
@@ -59,6 +60,14 @@
   const summaryArchivosEl = document.getElementById('summaryArchivos');
   const summaryRegistrosEl = document.getElementById('summaryRegistros');
 
+  // KoboUp queue
+  const btnLoadKoboup = document.getElementById('btnLoadKoboup');
+  const koboupStatus = document.getElementById('koboupStatus');
+  const koboupListEl = document.getElementById('koboupList');
+  const koboupListBody = document.getElementById('koboupListBody');
+  const koboupEmpty = document.getElementById('koboupEmpty');
+  const crossValidationPanel = document.getElementById('crossValidationPanel');
+
   // Filebox (gestión simple de archivos)
   const fileBoxInput = document.getElementById('fileBoxInput');
   const fileBoxDropzone = document.getElementById('fileBoxDropzone');
@@ -77,10 +86,15 @@
 
   let uploadedFilename = null;
   let uploadedFileType = null;
+  let uploadedOriginalName = null;
+  let koboupFiles = [];
+  let activeKoboupFileId = null;
   let extractedRecords = [];
   let pdfExtractedRecords = [];
   // true cuando el servidor indica que no pudo determinar coords automáticamente
   let coordsRequired = false;
+  let lastValidation = null;
+  let lastAlreadySubmitted = [];
 
   if (btnDownloadExtracted) {
     btnDownloadExtracted.style.display = 'none';
@@ -209,6 +223,7 @@
       if (data.use_kobo_api && document.getElementById('chkUsarApi')) document.getElementById('chkUsarApi').checked = true;
       uploadedFilename = null;
       uploadedFileType = null;
+      uploadedOriginalName = null;
       uploadedFileEl.textContent = '';
       verifySectionEl.style.display = 'none';
       dataTableEl.innerHTML = '';
@@ -358,6 +373,7 @@
         var alreadySubmitted = data.already_submitted || [];
         renderTable(extractedRecords, alreadySubmitted);
         verifySectionEl.style.display = 'block';
+        showCrossValidation(data.cross_validation);
         showValidationSummary(data.validation, alreadySubmitted);
         var msg = 'Excel cargado: ' + data.count + ' registros.';
         if (alreadySubmitted.length > 0) {
@@ -407,25 +423,110 @@
 
   function showValidationSummary(v, alreadySubmitted) {
     if (!validationSummaryEl) return;
+    lastValidation = v || null;
+    lastAlreadySubmitted = alreadySubmitted || [];
+    if (validationDetailEl) validationDetailEl.style.display = 'none';
+
     var parts = [];
     if (alreadySubmitted && alreadySubmitted.length > 0) {
-      parts.push('<span class="val-submitted">' + alreadySubmitted.length + ' fila(s) ya cargada(s) en Kobo (desmarcadas)</span>');
+      parts.push('<span class="val-submitted" data-vd-type="submitted">' + alreadySubmitted.length + ' fila(s) ya cargada(s) en Kobo (desmarcadas)</span>');
     }
     if (v && v.errors && v.errors.length > 0) {
-      parts.push('<span class="val-error">⚠ ' + v.errors.length + ' fila(s) con errores obligatorios</span>');
+      parts.push('<span class="val-error" data-vd-type="errors">\u26a0 ' + v.errors.length + ' fila(s) con errores obligatorios</span>');
     }
     if (v && v.duplicates && v.duplicates.length > 0) {
-      parts.push('<span class="val-warn">⚠ ' + v.duplicates.length + ' posible(s) fila(s) duplicada(s)</span>');
+      parts.push('<span class="val-warn" data-vd-type="dupes">\u26a0 ' + v.duplicates.length + ' posible(s) fila(s) duplicada(s)</span>');
     }
     if (v && v.with_warnings > 0) {
-      parts.push('<span class="val-info">' + v.with_warnings + ' fila(s) con advertencias</span>');
+      parts.push('<span class="val-info" data-vd-type="warnings">' + v.with_warnings + ' fila(s) con advertencias</span>');
     }
     if (parts.length === 0) {
       validationSummaryEl.style.display = 'none';
       return;
     }
-    validationSummaryEl.innerHTML = parts.join(' · ');
+    validationSummaryEl.innerHTML = parts.join(' \u00b7 ');
     validationSummaryEl.style.display = 'block';
+  }
+
+  function showValidationDetail(type) {
+    if (!validationDetailEl) return;
+    var v = lastValidation || {};
+    var html = '';
+    var headerClass = '';
+    var title = '';
+    var rows = [];
+
+    if (type === 'errors' && v.errors && v.errors.length > 0) {
+      headerClass = 'vd-errors';
+      title = '\u26a0 Filas con errores obligatorios (' + v.errors.length + ')';
+      v.errors.forEach(function (e) {
+        rows.push('<div class="vd-row"><span class="vd-fila">Fila ' + e.fila + '</span><span class="vd-msg">' + escapeHtml(e.mensaje) + '</span></div>');
+      });
+      if (v.errors.length >= 30) {
+        rows.push('<div class="vd-truncated">Mostrando las primeras 30 filas\u2026</div>');
+      }
+    } else if (type === 'warnings' && v.warnings && v.warnings.length > 0) {
+      headerClass = 'vd-warnings';
+      title = 'Filas con advertencias (' + v.with_warnings + ')';
+      v.warnings.forEach(function (w) {
+        rows.push('<div class="vd-row"><span class="vd-fila">Fila ' + w.fila + '</span><span class="vd-msg">' + escapeHtml(w.mensaje) + '</span></div>');
+      });
+      if (v.with_warnings > v.warnings.length) {
+        rows.push('<div class="vd-truncated">Mostrando ' + v.warnings.length + ' de ' + v.with_warnings + ' filas\u2026</div>');
+      }
+    } else if (type === 'dupes' && v.duplicates && v.duplicates.length > 0) {
+      headerClass = 'vd-dupes';
+      title = '\u26a0 Posibles duplicados (' + v.duplicates.length + ')';
+      v.duplicates.forEach(function (d) {
+        var filasStr = d.filas.join(', ');
+        var nombre = d.nombre || '(vac\u00edo)';
+        var fecha = d.fecha || '(sin fecha)';
+        rows.push('<div class="vd-row"><span class="vd-fila">Filas ' + filasStr + '</span><span class="vd-msg">' + escapeHtml(nombre) + ' \u2014 ' + escapeHtml(fecha) + '</span></div>');
+      });
+    } else if (type === 'submitted' && lastAlreadySubmitted.length > 0) {
+      headerClass = 'vd-submitted';
+      title = 'Filas ya cargadas en Kobo (' + lastAlreadySubmitted.length + ')';
+      lastAlreadySubmitted.forEach(function (idx) {
+        rows.push('<div class="vd-row"><span class="vd-fila">Fila ' + (idx + 1) + '</span><span class="vd-msg">Ya enviada anteriormente</span></div>');
+      });
+    } else {
+      validationDetailEl.style.display = 'none';
+      return;
+    }
+
+    html += '<div class="validation-detail">';
+    html += '<div class="validation-detail-header ' + headerClass + '">';
+    html += '<span>' + title + '</span>';
+    html += '<button class="validation-detail-close" title="Cerrar">&times;</button>';
+    html += '</div>';
+    html += '<div class="validation-detail-body">' + rows.join('') + '</div>';
+    html += '</div>';
+
+    validationDetailEl.innerHTML = html;
+    validationDetailEl.style.display = 'block';
+    validationDetailEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  if (validationSummaryEl) {
+    validationSummaryEl.addEventListener('click', function (ev) {
+      var span = ev.target.closest('[data-vd-type]');
+      if (!span) return;
+      var type = span.getAttribute('data-vd-type');
+      if (validationDetailEl && validationDetailEl.style.display !== 'none' &&
+          validationDetailEl.querySelector('.validation-detail-header.' + 'vd-' + type)) {
+        validationDetailEl.style.display = 'none';
+        return;
+      }
+      showValidationDetail(type);
+    });
+  }
+
+  if (validationDetailEl) {
+    validationDetailEl.addEventListener('click', function (ev) {
+      if (ev.target.closest('.validation-detail-close')) {
+        validationDetailEl.style.display = 'none';
+      }
+    });
   }
 
   function renderTable(records, alreadySubmitted) {
@@ -590,8 +691,9 @@
       if (data.error) { addLog('Error: ' + data.error, 'error'); return; }
       uploadedFilename = data.filename;
       uploadedFileType = data.type || 'excel';
-      uploadedFileEl.textContent = 'Archivo cargado: ' + data.filename;
-      addLog('Archivo subido: ' + data.filename, 'info');
+      uploadedOriginalName = data.original_filename || data.filename;
+      uploadedFileEl.textContent = 'Archivo cargado: ' + uploadedOriginalName;
+      addLog('Archivo subido: ' + uploadedOriginalName, 'info');
       verifySectionEl.style.display = 'none';
       extractedRecords = [];
       pdfExtractedRecords = [];
@@ -648,7 +750,7 @@
         uploadedFilename = data.filename;
         uploadedFileType = 'excel';
         dataConfirmed = true;
-        uploadedFileEl.textContent = 'Datos confirmados: ' + data.rows + ' registros. Listo para Iniciar.';
+        uploadedFileEl.textContent = (uploadedOriginalName || data.filename) + ' — ' + data.rows + ' registros. Listo para Iniciar.';
         addLog('Datos confirmados. Listo para iniciar carga.', 'info');
         // Preservar selección actual para restaurarla después del re-render
         var currentSelection = getSelectedRowIndices();
@@ -701,12 +803,10 @@
     var alertShown = false;
 
     if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
-    const es = new EventSource('/api/progress');
-    activeEventSource = es;
 
-    es.onmessage = function (ev) {
+    function handleSSEMessage(ev) {
       try {
-        const data = JSON.parse(ev.data);
+        var data = JSON.parse(ev.data);
         if (data.event === 'ping') return;
         if (data.message) {
           addLog(data.message, data.success === false ? 'error' : data.event === 'error' ? 'error' : 'info');
@@ -746,11 +846,9 @@
         }
         if (data.event === 'done' || data.event === 'error') {
           confirmRowSection.style.display = 'none';
-          es.close();
-          activeEventSource = null;
+          if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
           setRunning(false);
           if (data.stats && data.stats.tiempo_segundos != null) setProgress(100, 'Finalizado');
-          // Mostrar botón de descarga de filas fallidas si corresponde
           if (data.has_failed_excel || (data.stats && (data.stats.fallidos || 0) > 0)) {
             var btnDl = document.getElementById('btnDownloadFailed');
             if (!btnDl && progressActionsEl) {
@@ -770,16 +868,48 @@
           loadCheckpoint();
           loadHistorial();
           loadExcelForVerification();
+          if (data.event === 'done' && activeKoboupFileId) {
+            markKoboupDone(activeKoboupFileId);
+            activeKoboupFileId = null;
+          }
         }
       } catch (err) {
         addLog('Error al interpretar evento: ' + err.message, 'error');
       }
-    };
-    es.onerror = function () {
-      es.close();
-      activeEventSource = null;
-      setRunning(false);
-    };
+    }
+
+    function handleSSEError() {
+      if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
+      fetch('/api/status').then(function (r) { return r.json(); }).then(function (st) {
+        if (st.status === 'running') {
+          addLog('Conexión perdida, reconectando…', 'info');
+          setTimeout(connectSSE, 2000);
+        } else {
+          setRunning(false);
+          setProgress(100, 'Finalizado');
+          loadCheckpoint();
+          loadHistorial();
+          loadExcelForVerification();
+        }
+      }).catch(function () {
+        setTimeout(function () {
+          fetch('/api/status').then(function (r) { return r.json(); }).then(function (st) {
+            if (st.status === 'running') { setTimeout(connectSSE, 2000); }
+            else { setRunning(false); }
+          }).catch(function () { setRunning(false); });
+        }, 3000);
+      });
+    }
+
+    function connectSSE() {
+      if (activeEventSource) { activeEventSource.close(); }
+      var src = new EventSource('/api/progress');
+      activeEventSource = src;
+      src.onmessage = handleSSEMessage;
+      src.onerror = handleSSEError;
+    }
+
+    connectSSE();
 
     const estadoBrigada = (document.getElementById('inputEstadoBrigada') || {}).value.trim();
     const lugar = (document.getElementById('inputLugar') || {}).value.trim();
@@ -1409,8 +1539,9 @@
           }
           uploadedFilename = data.filename;
           uploadedFileType = data.type || 'excel';
-          uploadedFileEl.textContent = 'Archivo cargado: ' + (data.original_filename || data.filename);
-          addLog('Archivo recargado desde historial: ' + (data.original_filename || data.filename), 'info');
+          uploadedOriginalName = data.original_filename || data.filename;
+          uploadedFileEl.textContent = 'Archivo cargado: ' + uploadedOriginalName;
+          addLog('Archivo recargado desde historial: ' + uploadedOriginalName, 'info');
           verifySectionEl.style.display = 'none';
           extractedRecords = [];
           loadExcelForVerification();
@@ -1936,6 +2067,225 @@
 
     window._helpGuide = { open: openGuide, close: closeGuide };
   })();
+
+  // ── KoboUp Queue ───────────────────────────────────────────────────────────
+
+  function loadKoboupQueue() {
+    if (!btnLoadKoboup) return;
+    btnLoadKoboup.disabled = true;
+    btnLoadKoboup.textContent = 'Cargando…';
+    if (koboupStatus) koboupStatus.textContent = '';
+    fetch('/api/koboup/files')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        btnLoadKoboup.disabled = false;
+        btnLoadKoboup.textContent = 'Actualizar lista';
+        if (data.error) {
+          if (koboupStatus) koboupStatus.textContent = 'Error: ' + data.error;
+          addLog('Error KoboUp: ' + data.error, 'error');
+          return;
+        }
+        koboupFiles = data.files || [];
+        if (koboupStatus) {
+          koboupStatus.textContent = data.pending + ' pendiente(s) / ' + data.total + ' total';
+        }
+        renderKoboupList();
+      })
+      .catch(function (e) {
+        btnLoadKoboup.disabled = false;
+        btnLoadKoboup.textContent = 'Cargar lista de KoboUp';
+        if (koboupStatus) koboupStatus.textContent = 'Sin conexión a KoboUp';
+        addLog('Error al conectar con KoboUp: ' + e.message, 'error');
+      });
+  }
+
+  function renderKoboupList() {
+    if (!koboupListBody) return;
+    if (koboupFiles.length === 0) {
+      if (koboupListEl) koboupListEl.style.display = 'none';
+      if (koboupEmpty) { koboupEmpty.style.display = 'block'; koboupEmpty.textContent = 'No hay archivos validados en KoboUp.'; }
+      return;
+    }
+    if (koboupEmpty) koboupEmpty.style.display = 'none';
+    if (koboupListEl) koboupListEl.style.display = 'block';
+
+    var html = '';
+    for (var i = 0; i < koboupFiles.length; i++) {
+      var f = koboupFiles[i];
+      var isActive = activeKoboupFileId && String(f.id) === String(activeKoboupFileId);
+      var isDone = f.local_status === 'completed';
+      var rowClass = 'kq-row';
+      if (isActive) rowClass += ' kq-active';
+      if (isDone) rowClass += ' kq-done';
+
+      var statusLabel = isDone ? '<span class="kq-badge kq-badge-done">Cargado</span>'
+        : isActive ? '<span class="kq-badge kq-badge-active">En proceso</span>'
+        : '<span class="kq-badge kq-badge-pending">Pendiente</span>';
+
+      var actionBtn = isDone
+        ? '<button class="btn btn-small btn-secondary kq-btn" disabled>Completado</button>'
+        : isActive
+        ? '<button class="btn btn-small btn-secondary kq-btn" disabled>Cargado</button>'
+        : '<button class="btn btn-small btn-primary kq-btn" data-kq-idx="' + i + '">Cargar</button>';
+
+      html += '<div class="' + rowClass + '">'
+        + '<span class="kq-col-num">' + (i + 1) + '</span>'
+        + '<span class="kq-col-name" title="' + (f.original_name || '').replace(/"/g, '&quot;') + '">' + (f.original_name || 'Sin nombre') + '</span>'
+        + '<span class="kq-col-status">' + statusLabel + '</span>'
+        + '<span class="kq-col-action">' + actionBtn + '</span>'
+        + '</div>';
+    }
+    koboupListBody.innerHTML = html;
+  }
+
+  if (koboupListBody) {
+    koboupListBody.addEventListener('click', function (ev) {
+      var btn = ev.target.closest('[data-kq-idx]');
+      if (!btn) return;
+      var idx = parseInt(btn.getAttribute('data-kq-idx'), 10);
+      if (isNaN(idx) || !koboupFiles[idx]) return;
+      selectKoboupFile(koboupFiles[idx], btn);
+    });
+  }
+
+  function selectKoboupFile(fileInfo, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Descargando…'; }
+    activeKoboupFileId = String(fileInfo.id);
+    addLog('Descargando de KoboUp: ' + fileInfo.original_name + '…', 'info');
+
+    fetch('/api/koboup/load-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        download_url: fileInfo.download_url,
+        original_name: fileInfo.original_name,
+        file_id: String(fileInfo.id),
+      }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          addLog('Error al descargar: ' + data.error, 'error');
+          if (btn) { btn.disabled = false; btn.textContent = 'Cargar'; }
+          return;
+        }
+        uploadedFilename = data.filename;
+        uploadedFileType = data.type || 'excel';
+        uploadedOriginalName = data.original_filename || data.filename;
+        uploadedFileEl.textContent = 'Archivo cargado: ' + uploadedOriginalName;
+        addLog('Archivo descargado y cargado: ' + uploadedOriginalName, 'info');
+        renderKoboupList();
+        loadExcelForVerification();
+        updateStartButton();
+      })
+      .catch(function (e) {
+        addLog('Error: ' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Cargar'; }
+      });
+  }
+
+  function markKoboupDone(fileId) {
+    if (!fileId) return;
+    fetch('/api/koboup/mark-done', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_id: String(fileId) }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function () {
+        for (var i = 0; i < koboupFiles.length; i++) {
+          if (String(koboupFiles[i].id) === String(fileId)) {
+            koboupFiles[i].local_status = 'completed';
+          }
+        }
+        renderKoboupList();
+        if (koboupStatus) {
+          var pending = koboupFiles.filter(function (f) { return f.local_status !== 'completed'; }).length;
+          koboupStatus.textContent = pending + ' pendiente(s) / ' + koboupFiles.length + ' total';
+        }
+      })
+      .catch(function () {});
+  }
+
+  if (btnLoadKoboup) {
+    btnLoadKoboup.addEventListener('click', loadKoboupQueue);
+  }
+
+  // ── Cross Validation Panel ────────────────────────────────────────────────
+
+  function showCrossValidation(cv) {
+    if (!crossValidationPanel) return;
+    if (!cv || !cv.summary) {
+      crossValidationPanel.style.display = 'none';
+      return;
+    }
+    var s = cv.summary;
+    if (s.already_loaded === 0 && s.possible_dupes === 0) {
+      crossValidationPanel.style.display = 'none';
+      return;
+    }
+
+    var html = '<div class="cv-summary">';
+    if (uploadedOriginalName) {
+      html += '<div class="cv-filename">' + uploadedOriginalName + '</div>';
+    }
+    html += '<div class="cv-stats">';
+    if (s.already_loaded > 0) {
+      html += '<span class="cv-stat cv-stat-done">' + s.already_loaded + ' paciente(s) ya cargados a Kobo</span>';
+    }
+    if (s.possible_dupes > 0) {
+      html += '<span class="cv-stat cv-stat-warn">' + s.possible_dupes + ' posible(s) duplicado(s) — revisar</span>';
+    }
+    html += '<span class="cv-stat cv-stat-new">' + s.new + ' paciente(s) nuevos listos para cargar</span>';
+    html += '</div>';
+
+    if (cv.possible_duplicates && cv.possible_duplicates.length > 0) {
+      html += '<details class="cv-details"><summary>Ver detalle de posibles duplicados</summary><div class="cv-dupes-list">';
+      for (var i = 0; i < cv.possible_duplicates.length; i++) {
+        var d = cv.possible_duplicates[i];
+        html += '<div class="cv-dupe-item"><strong>Fila ' + (d.index + 1) + ':</strong> ' + d.name;
+        if (d.matched_with && d.matched_with.length > 0) {
+          html += ' — coincide con: ';
+          for (var j = 0; j < d.matched_with.length; j++) {
+            var m = d.matched_with[j];
+            html += '<em>' + m.name + '</em> (' + (m.service || '') + ', ' + (m.date || '') + ', ' + (m.file || '') + ')';
+            if (j < d.matched_with.length - 1) html += '; ';
+          }
+        }
+        html += '</div>';
+      }
+      html += '</div></details>';
+    }
+
+    if (s.new > 0 && (s.already_loaded > 0 || s.possible_dupes > 0)) {
+      html += '<div class="cv-action"><button type="button" class="btn btn-small btn-primary" id="btnSelectNewOnly">Seleccionar solo ' + s.new + ' nuevos</button></div>';
+    }
+    html += '</div>';
+    crossValidationPanel.innerHTML = html;
+    crossValidationPanel.style.display = 'block';
+
+    var btnNewOnly = document.getElementById('btnSelectNewOnly');
+    if (btnNewOnly && cv.new_records) {
+      btnNewOnly.addEventListener('click', function () {
+        selectOnlyIndices(cv.new_records);
+        addLog('Seleccionadas solo las ' + cv.new_records.length + ' filas nuevas.', 'info');
+      });
+    }
+  }
+
+  function selectOnlyIndices(indices) {
+    var checkboxes = dataTableEl.querySelectorAll('input[type="checkbox"][data-row-idx]');
+    var indexSet = {};
+    for (var i = 0; i < indices.length; i++) indexSet[indices[i]] = true;
+    for (var j = 0; j < checkboxes.length; j++) {
+      var idx = parseInt(checkboxes[j].getAttribute('data-row-idx'), 10);
+      checkboxes[j].checked = !!indexSet[idx];
+    }
+  }
+
+  // ── Hook SSE done event to mark KoboUp file as completed ──────────────────
+
+  var _origHandleSSEMessage = typeof handleSSEMessage === 'function' ? handleSSEMessage : null;
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 

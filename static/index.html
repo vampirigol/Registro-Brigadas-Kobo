@@ -9,7 +9,7 @@
   <title>Carga KoboToolbox</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/style.css?v=22">
+  <link rel="stylesheet" href="/static/style.css?v=25">
 </head>
 <body>
   <div class="app-layout">
@@ -38,6 +38,29 @@
         </div>
       </section>
     </header>
+
+    <!-- Cola de archivos KoboUp -->
+    <section class="koboup-queue card" id="koboupSection">
+      <div class="koboup-header">
+        <h2>Cola de archivos</h2>
+        <div class="koboup-actions">
+          <button type="button" id="btnLoadKoboup" class="btn btn-small btn-primary">Cargar lista de KoboUp</button>
+          <span id="koboupStatus" class="koboup-status"></span>
+        </div>
+      </div>
+      <div id="koboupList" class="koboup-list" style="display:none">
+        <div class="koboup-list-header">
+          <span class="kq-col-num">#</span>
+          <span class="kq-col-name">Archivo</span>
+          <span class="kq-col-status">Estado</span>
+          <span class="kq-col-action"></span>
+        </div>
+        <div id="koboupListBody" class="koboup-list-body"></div>
+      </div>
+      <div id="koboupEmpty" class="koboup-empty">
+        Haz clic en &laquo;Cargar lista de KoboUp&raquo; para ver los archivos validados pendientes de carga.
+      </div>
+    </section>
 
     <!-- Config + Upload row -->
     <div class="top-cards-row">
@@ -74,47 +97,13 @@
       <p id="mappingEditorMsg" class="mapping-editor-msg"></p>
     </section>
 
-    <!-- Gesti&oacute;n de archivos -->
-    <section class="filebox card">
-      <h2>Gesti&oacute;n de archivos Excel/PDF</h2>
-        <p class="hint">Sube uno o varios archivos Excel/PDF. Puedes arrastrarlos o seleccionarlos.</p>
-        <div class="filebox-dropzone" id="fileBoxDropzone" data-tooltip="Arrastra uno o varios archivos Excel/CSV/PDF aquí, o haz clic para seleccionarlos desde tu computadora.">
-          <input type="file" id="fileBoxInput" accept=".xlsx,.xls,.csv,.pdf" multiple hidden>
-          <div class="filebox-dropzone-content">
-            <span class="filebox-dropzone-icon">+</span>
-            <span class="filebox-dropzone-text">Arrastra archivos aquí o <strong>haz clic para seleccionar</strong></span>
-            <span class="filebox-dropzone-formats">Excel (.xlsx, .xls), CSV (.csv) o PDF (.pdf)</span>
-          </div>
-        </div>
-        <div id="fileBoxPending" class="filebox-pending" style="display:none">
-          <div class="filebox-pending-header">
-            <span id="fileBoxPendingCount" class="filebox-pending-count"></span>
-            <button type="button" id="btnFileBoxClear" class="btn btn-secondary btn-small">Limpiar</button>
-          </div>
-          <ul id="fileBoxPendingList" class="filebox-pending-list"></ul>
-          <div class="filebox-upload-options">
-            <label class="inline-checkbox" data-tooltip="Si marcas esta casilla, los archivos se suben con estatus 'validado'.">
-              <input type="checkbox" id="chkFileBoxValidated"> Subir como validados
-            </label>
-            <input type="text" id="fileBoxNote" placeholder="Nota opcional (ej. versión corregida)" data-tooltip="Agrega una nota descriptiva a todos los archivos del lote.">
-          </div>
-          <button type="button" id="btnFileBoxUpload" class="btn btn-primary" data-tooltip="Sube todos los archivos seleccionados al repositorio compartido.">Subir archivos</button>
-        </div>
-        <div id="fileBoxProgress" class="filebox-progress" style="display:none">
-          <div class="filebox-progress-bar-wrap">
-            <div class="filebox-progress-bar" id="fileBoxProgressBar" style="width:0%"></div>
-          </div>
-          <p class="filebox-progress-text" id="fileBoxProgressText">Subiendo…</p>
-        </div>
-        <p id="fileBoxMessage" class="hint"></p>
-        <div id="fileBoxList" class="filebox-list"></div>
-      </section>
-
       <!-- Verificar datos -->
       <section id="verifySection" class="verify card" style="display:none">
         <h2>02&ensp;Verificar datos <span class="badge optional">opcional</span></h2>
         <p class="hint">Revisa o edita antes de cargar. Elige qué filas cargar (por defecto todas están seleccionadas).</p>
+        <div id="crossValidationPanel" class="cross-validation-panel" style="display:none"></div>
         <div id="validationSummary" class="validation-summary" style="display:none"></div>
+        <div id="validationDetail" style="display:none"></div>
         <div class="table-wrap">
           <table id="dataTable" class="data-table"></table>
         </div>
@@ -273,6 +262,6 @@
   <!-- Puntero animado -->
   <div class="guide-pointer" id="guidePointer" style="display:none"></div>
 
-  <script src="/static/app.js?v=22"></script>
+  <script src="/static/app.js?v=25"></script>
 </body>
 </html>

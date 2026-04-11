@@ -593,6 +593,79 @@ body::before { display: none; }
 .val-warn  { color: var(--warning); font-weight: 500; }
 .val-info  { color: var(--accent); }
 
+.val-error, .val-warn, .val-info, .val-submitted {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  transition: opacity 0.15s;
+}
+.val-error:hover, .val-warn:hover, .val-info:hover, .val-submitted:hover {
+  opacity: 0.75;
+}
+
+.validation-detail {
+  font-size: 0.78rem;
+  margin-bottom: 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  animation: vd-slide 0.2s ease-out;
+}
+@keyframes vd-slide {
+  from { opacity: 0; max-height: 0; }
+  to   { opacity: 1; max-height: 600px; }
+}
+.validation-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+.validation-detail-header.vd-errors   { background: var(--error-dim); color: var(--error); border-bottom: 1px solid rgba(239,68,68,0.15); }
+.validation-detail-header.vd-warnings { background: rgba(245,158,11,0.08); color: var(--warning); border-bottom: 1px solid rgba(245,158,11,0.15); }
+.validation-detail-header.vd-dupes    { background: rgba(245,158,11,0.08); color: var(--warning); border-bottom: 1px solid rgba(245,158,11,0.15); }
+.validation-detail-header.vd-submitted { background: var(--success-dim); color: var(--success); border-bottom: 1px solid rgba(34,197,94,0.15); }
+.validation-detail-close {
+  background: none; border: none; cursor: pointer; font-size: 1.1rem; line-height: 1;
+  color: inherit; opacity: 0.6; padding: 0 4px;
+}
+.validation-detail-close:hover { opacity: 1; }
+.validation-detail-body {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.35rem 0;
+  background: var(--bg);
+}
+.validation-detail-body::-webkit-scrollbar { width: 5px; }
+.validation-detail-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.vd-row {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+.vd-row:last-child { border-bottom: none; }
+.vd-fila {
+  font-weight: 600;
+  min-width: 52px;
+  flex-shrink: 0;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+.vd-msg {
+  color: var(--text);
+  word-break: break-word;
+}
+.vd-truncated {
+  padding: 0.3rem 0.75rem;
+  font-style: italic;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
 /* ── Progress ────────────────────────────────────────────────────────── */
 
 .progress-bar-wrap {
@@ -1406,3 +1479,140 @@ body::before { display: none; }
 }
 .guide-pointer.point-down { animation: guide-point-down 1s ease-in-out infinite; }
 .guide-pointer.point-right { animation: guide-point-right 1s ease-in-out infinite; }
+
+/* ── KoboUp Queue ──────────────────────────────────────────────────────────── */
+.koboup-queue { margin-bottom: 1rem; }
+.koboup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.koboup-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.koboup-status {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.koboup-empty {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 1rem 0;
+  text-align: center;
+}
+.koboup-list { margin-top: 0.75rem; }
+.koboup-list-header {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 7rem 6.5rem;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--border);
+}
+.koboup-list-body {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+.kq-row {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 7rem 6.5rem;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.84rem;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.kq-row:hover { background: rgba(99,102,241,0.04); }
+.kq-row.kq-active { background: rgba(99,102,241,0.08); }
+.kq-row.kq-done { opacity: 0.55; }
+.kq-col-num {
+  text-align: center;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.kq-col-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kq-done .kq-col-name { text-decoration: line-through; }
+.kq-col-status { text-align: center; }
+.kq-col-action { text-align: center; }
+.kq-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.kq-badge-pending { background: #e2e8f0; color: #475569; }
+.kq-badge-active { background: #dbeafe; color: #1d4ed8; }
+.kq-badge-done { background: #dcfce7; color: #15803d; }
+.kq-btn { font-size: 0.78rem !important; padding: 0.25rem 0.75rem !important; }
+
+/* ── Cross Validation Panel ────────────────────────────────────────────────── */
+.cross-validation-panel {
+  margin-bottom: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, #f0f9ff 0%, #f8fafc 100%);
+}
+.cv-summary { font-size: 0.85rem; }
+.cv-filename {
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+.cv-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.cv-stat {
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.cv-stat-done { background: #dcfce7; color: #15803d; }
+.cv-stat-warn { background: #fef3c7; color: #92400e; }
+.cv-stat-new { background: #dbeafe; color: #1d4ed8; }
+.cv-details {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+.cv-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primary);
+}
+.cv-dupes-list {
+  margin-top: 0.4rem;
+  max-height: 10rem;
+  overflow-y: auto;
+}
+.cv-dupe-item {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+}
+.cv-dupe-item em { color: var(--primary); font-style: normal; font-weight: 600; }
+.cv-action {
+  margin-top: 0.65rem;
+  text-align: right;
+}
