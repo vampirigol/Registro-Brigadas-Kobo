@@ -51,11 +51,13 @@
   const historialContent = document.getElementById('historialContent');
   const historialList = document.getElementById('historialList');
   const historialArchivos = document.getElementById('historialArchivos');
-  const historialDesde = document.getElementById('historialDesde');
-  const btnRefreshHistorial = document.getElementById('btnRefreshHistorial');
+  
   const kpiSummaryEl = document.getElementById('kpiSummary');
   const kpiArchivosEl = document.getElementById('kpiArchivos');
   const kpiFilasEl = document.getElementById('kpiFilas');
+
+  const summaryArchivosEl = document.getElementById('summaryArchivos');
+  const summaryRegistrosEl = document.getElementById('summaryRegistros');
 
   // Filebox (gestión simple de archivos)
   const fileBoxInput = document.getElementById('fileBoxInput');
@@ -205,28 +207,41 @@
       var apiWrap = document.getElementById('apiToggleWrap');
       if (apiWrap) apiWrap.style.display = (data.use_kobo_api ? 'block' : 'none');
       if (data.use_kobo_api && document.getElementById('chkUsarApi')) document.getElementById('chkUsarApi').checked = true;
-      if (data.uploaded_file) {
-        uploadedFilename = data.uploaded_file;
-        uploadedFileType = 'excel';
-        dataConfirmed = false;
-        uploadedFileEl.textContent = 'Archivo cargado: ' + data.uploaded_file;
-        verifySectionEl.style.display = 'none';
-        loadExcelForVerification();
-        if (btnDownloadExtracted) btnDownloadExtracted.style.display = 'inline-flex';
-      } else {
-        uploadedFilename = null;
-        uploadedFileType = null;
-        uploadedFileEl.textContent = '';
-        verifySectionEl.style.display = 'none';
-        if (btnDownloadExtracted) btnDownloadExtracted.style.display = 'none';
-      }
+      uploadedFilename = null;
+      uploadedFileType = null;
+      uploadedFileEl.textContent = '';
+      verifySectionEl.style.display = 'none';
+      dataTableEl.innerHTML = '';
+      extractedRecords = [];
+      pdfExtractedRecords = [];
+      dataConfirmed = false;
+      if (validationSummaryEl) validationSummaryEl.style.display = 'none';
+      if (btnDownloadExtracted) btnDownloadExtracted.style.display = 'none';
       updateStartButton();
     } catch (e) {
       mappingStatusEl.textContent = 'Error al cargar configuración.';
       mappingStatusEl.className = 'mapping-status warn';
     }
+    logEl.innerHTML = '';
+    setProgress(0, '—');
+    statOk.textContent = '0';
+    statFail.textContent = '0';
+    statTime.textContent = '—';
+    if (progressActionsEl) progressActionsEl.style.display = 'none';
+    var btnDlFailed = document.getElementById('btnDownloadFailed');
+    if (btnDlFailed) btnDlFailed.style.display = 'none';
+    confirmRowSection.style.display = 'none';
+
+    var inpEstado = document.getElementById('inputEstadoBrigada');
+    if (inpEstado) inpEstado.value = '';
+    if (inputLugar) inputLugar.value = '';
+    if (inputLatitud) inputLatitud.value = '';
+    if (inputLongitud) inputLongitud.value = '';
+    setCoordsHint('');
+    coordsRequired = false;
+
     loadFileBox();
-    // Cargar checkpoint para mostrar opción de reanudación
+    loadSummaryStats();
     loadCheckpoint();
   }
 
@@ -1222,26 +1237,45 @@
 
   // ── Historial ────────────────────────────────────────────────────────────────
 
-  // Inicializar filtro de fecha con el día 22 del mes actual
-  (function () {
-    if (!historialDesde) return;
-    var hoy = new Date();
-    var yyyy = hoy.getFullYear();
-    var mm = String(hoy.getMonth() + 1).padStart(2, '0');
-    historialDesde.value = yyyy + '-' + mm + '-22';
-  })();
-
   historialToggle.addEventListener('click', function () {
     var open = historialContent.style.display !== 'none';
     historialContent.style.display = open ? 'none' : 'block';
     if (!open) loadHistorial();
   });
 
-  if (btnRefreshHistorial) {
-    btnRefreshHistorial.addEventListener('click', function () { loadHistorial(); });
+  function updateSummaryStats(archivos, registros) {
+    if (summaryArchivosEl) summaryArchivosEl.textContent = archivos;
+    if (summaryRegistrosEl) summaryRegistrosEl.textContent = registros;
   }
-  if (historialDesde) {
-    historialDesde.addEventListener('change', function () { loadHistorial(); });
+
+  function loadSummaryStats() {
+    fetch('/api/historial')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var entries = data.entries || [];
+        var archivosSet = new Set();
+        var totalRegistros = 0;
+        entries.forEach(function (e) {
+          var exitosos = Number(e.exitosos) || 0;
+          var nombre = (e.archivo_original || e.archivo || '').trim();
+          if (exitosos > 0 && nombre) archivosSet.add(nombre);
+          totalRegistros += exitosos;
+        });
+        updateSummaryStats(archivosSet.size, totalRegistros);
+      })
+      .catch(function () { });
+  }
+
+  function updateSummaryFromEntries(entries) {
+    var archivosSet = new Set();
+    var totalRegistros = 0;
+    (entries || []).forEach(function (e) {
+      var exitosos = Number(e.exitosos) || 0;
+      var nombre = (e.archivo_original || e.archivo || '').trim();
+      if (exitosos > 0 && nombre) archivosSet.add(nombre);
+      totalRegistros += exitosos;
+    });
+    updateSummaryStats(archivosSet.size, totalRegistros);
   }
 
   function updateKpis(entries) {
@@ -1263,54 +1297,55 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var entries = data.entries || [];
-        // Filtrar por fecha si hay filtro activo
-        var desdeVal = historialDesde ? historialDesde.value : '';
-        if (desdeVal) {
-          entries = entries.filter(function (e) {
-            return (e.fecha || '') >= desdeVal;
-          });
-        }
+        var archivosExitosos = data.archivos_exitosos || [];
         updateKpis(entries);
-        renderHistorialArchivos(entries);
+        updateSummaryFromEntries(entries);
+        renderHistorialArchivos(archivosExitosos);
         renderHistorial(entries);
       })
       .catch(function () { /* silencioso */ });
   }
 
-  function renderHistorialArchivos(entries) {
+  function renderHistorialArchivos(archivosExitosos) {
     if (!historialArchivos) return;
-    if (entries.length === 0) {
-      historialArchivos.innerHTML = '';
+    if (!archivosExitosos || archivosExitosos.length === 0) {
+      historialArchivos.innerHTML = '<p class="hint">No hay archivos con cargas exitosas.</p>';
       return;
     }
-    // Agrupar por nombre original del archivo (único por nombre)
-    var archivosMap = {};
-    entries.forEach(function (e) {
-      var nombre = e.archivo_original || e.archivo || '—';
-      if (!archivosMap[nombre]) {
-        archivosMap[nombre] = { nombre: nombre, archivo: e.archivo || '', count: 0, exitosos: 0, fallidos: 0 };
+    var html = '<div class="hist-archivos-titulo">Archivos cargados con \u00e9xito a KoboToolbox</div>';
+    html += '<div class="hist-archivos-grid">';
+    archivosExitosos.forEach(function (a) {
+      var nombre = a.nombre_original || '';
+      var interno = a.archivo_interno || '';
+      var esExcel = /\.(xlsx|xls|csv)$/i.test(interno || nombre);
+      var fecha = (a.ultima_fecha || '').slice(0, 10);
+      var pct = a.total > 0 ? Math.round((a.exitosos / a.total) * 100) : 0;
+      var statusClass = pct === 100 ? 'hist-file-complete' : 'hist-file-partial';
+
+      html += '<div class="hist-file-card ' + statusClass + '" data-preview-file="' + escapeHtml(interno) + '" data-preview-name="' + escapeHtml(nombre) + '" style="cursor:pointer">';
+      html += '<div class="hist-file-header">';
+      html += '<span class="hist-file-icon">' + (esExcel ? '\uD83D\uDCC4' : '\uD83D\uDCC4') + '</span>';
+      html += '<span class="hist-file-name" title="' + escapeHtml(nombre) + '">' + escapeHtml(nombre) + '</span>';
+      html += '</div>';
+      html += '<div class="hist-file-stats">';
+      html += '<div class="hist-file-bar-wrap"><div class="hist-file-bar" style="width:' + pct + '%"></div></div>';
+      html += '<span class="hist-file-stat-line">' + a.exitosos + ' exitosos / ' + a.total + ' total (' + pct + '%)</span>';
+      if (a.fallidos > 0) {
+        html += '<span class="hist-file-fallidos">' + a.fallidos + ' fallidos</span>';
       }
-      archivosMap[nombre].count++;
-      archivosMap[nombre].exitosos += (e.exitosos || 0);
-      archivosMap[nombre].fallidos += (e.fallidos || 0);
-    });
-    var archivos = Object.values(archivosMap);
-    var html = '<div class="hist-archivos-titulo">Archivos cargados en el período</div>';
-    html += '<ul class="hist-archivos-lista">';
-    archivos.forEach(function (a) {
-      var esExcel = /\.(xlsx|xls|csv)$/i.test(a.archivo);
-      var badge = a.fallidos > 0
-        ? '<span class="hist-badge-warn">' + a.fallidos + ' fallidos</span>'
-        : '<span class="hist-badge-ok">' + a.exitosos + ' exitosos</span>';
-      html += '<li class="hist-archivo-item">';
-      html += '<span class="hist-archivo-nombre" title="' + escapeHtml(a.nombre) + '">' + escapeHtml(a.nombre) + '</span>';
-      html += '<span class="hist-archivo-meta">' + a.count + ' carga(s) · ' + badge + '</span>';
-      if (esExcel) {
-        html += '<button class="btn-hist-reload btn-hist-reload-small" data-filename="' + escapeHtml(a.archivo) + '" data-original="' + escapeHtml(a.nombre) + '" title="Recargar en la tabla">↩ Recargar</button>';
+      html += '<span class="hist-file-meta">' + a.cargas + ' carga(s) \u00b7 \u00daltima: ' + escapeHtml(fecha) + '</span>';
+      html += '</div>';
+      html += '<div class="hist-file-actions">';
+      if (a.download_url) {
+        html += '<a class="btn-hist-download" href="' + escapeHtml(a.download_url) + '" download title="Descargar archivo">\u2B07 Descargar</a>';
       }
-      html += '</li>';
+      if (esExcel && interno) {
+        html += '<button class="btn-hist-reload btn-hist-reload-small" data-filename="' + escapeHtml(interno) + '" data-original="' + escapeHtml(nombre) + '" title="Recargar en la tabla">\u21A9 Recargar</button>';
+      }
+      html += '</div>';
+      html += '</div>';
     });
-    html += '</ul>';
+    html += '</div>';
     historialArchivos.innerHTML = html;
   }
 
@@ -1391,6 +1426,93 @@
 
   setupHistorialReload(historialList);
   setupHistorialReload(historialArchivos);
+
+  // ── Modal vista previa de archivo ──────────────────────────────────────────
+
+  var previewModal = document.getElementById('filePreviewModal');
+  var previewTitle = document.getElementById('filePreviewTitle');
+  var previewTable = document.getElementById('filePreviewTable');
+  var previewLoading = document.getElementById('filePreviewLoading');
+  var previewError = document.getElementById('filePreviewError');
+  var previewInfo = document.getElementById('filePreviewInfo');
+  var btnClosePreview = document.getElementById('btnClosePreview');
+
+  function openFilePreview(filename, displayName) {
+    if (!previewModal) return;
+    previewTitle.textContent = displayName || filename;
+    previewTable.innerHTML = '';
+    previewError.style.display = 'none';
+    previewInfo.textContent = '';
+    previewLoading.style.display = 'flex';
+    previewModal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    fetch('/api/uploads/' + encodeURIComponent(filename) + '/preview')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        previewLoading.style.display = 'none';
+        if (data.error) {
+          previewError.textContent = data.error;
+          previewError.style.display = 'block';
+          return;
+        }
+        var headers = data.headers || [];
+        var rows = data.rows || [];
+        var info = rows.length + ' fila(s)';
+        if (data.truncated) info += ' (mostrando primeras ' + rows.length + ' de ' + data.total_rows + ')';
+        previewInfo.textContent = info;
+
+        var html = '<thead><tr>';
+        html += '<th class="row-num">#</th>';
+        headers.forEach(function (h) {
+          html += '<th>' + escapeHtml(h) + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+        rows.forEach(function (row, idx) {
+          html += '<tr>';
+          html += '<td class="row-num">' + (idx + 1) + '</td>';
+          row.forEach(function (cell) {
+            html += '<td>' + escapeHtml(String(cell)) + '</td>';
+          });
+          html += '</tr>';
+        });
+        html += '</tbody>';
+        previewTable.innerHTML = html;
+      })
+      .catch(function (err) {
+        previewLoading.style.display = 'none';
+        previewError.textContent = 'Error al cargar: ' + err.message;
+        previewError.style.display = 'block';
+      });
+  }
+
+  function closeFilePreview() {
+    if (!previewModal) return;
+    previewModal.style.display = 'none';
+    document.body.style.overflow = '';
+    previewTable.innerHTML = '';
+  }
+
+  if (btnClosePreview) btnClosePreview.addEventListener('click', closeFilePreview);
+  if (previewModal) {
+    previewModal.addEventListener('click', function (ev) {
+      if (ev.target === previewModal) closeFilePreview();
+    });
+  }
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && previewModal && previewModal.style.display !== 'none') closeFilePreview();
+  });
+
+  if (historialArchivos) {
+    historialArchivos.addEventListener('click', function (ev) {
+      var card = ev.target.closest('.hist-file-card');
+      if (!card) return;
+      if (ev.target.closest('.btn-hist-download') || ev.target.closest('.btn-hist-reload')) return;
+      var filename = card.getAttribute('data-preview-file');
+      var displayName = card.getAttribute('data-preview-name') || filename;
+      if (filename) openFilePreview(filename, displayName);
+    });
+  }
 
   // ── Tooltips ────────────────────────────────────────────────────────────────
 
@@ -1475,6 +1597,344 @@
     window.addEventListener('resize', function () {
       if (activeTarget) hideTooltip();
     });
+  })();
+
+  // ── Help Guide System ──────────────────────────────────────────────────────
+
+  (function initHelpGuide() {
+    var overlay    = document.getElementById('guideOverlay');
+    var overlayBg  = document.getElementById('guideOverlayBg');
+    var popup      = document.getElementById('guidePopup');
+    var arrow      = document.getElementById('guideArrow');
+    var stepBadge  = document.getElementById('guideStepBadge');
+    var stepTitle  = document.getElementById('guideStepTitle');
+    var guideIcon  = document.getElementById('guideIcon');
+    var guideStatus = document.getElementById('guideStatus');
+    var guideDesc  = document.getElementById('guideDesc');
+    var guideDots  = document.getElementById('guideDots');
+    var btnPrev    = document.getElementById('guidePrev');
+    var btnNext    = document.getElementById('guideNext');
+    var btnClose   = document.getElementById('guideClose');
+    var btnHelp    = document.getElementById('helpBtn');
+    var pointer    = document.getElementById('guidePointer');
+
+    if (!overlay || !popup || !btnHelp) return;
+
+    var currentStep = 0;
+    var guideActive = false;
+    var highlightedEl = null;
+
+    var STEPS = [
+      {
+        num: 1,
+        title: 'Subir archivo',
+        icon: '\uD83D\uDCC2',
+        selector: '#uploadZone',
+        scrollTo: '.upload.card',
+        desc: 'Arrastra o haz clic aquí para subir tu archivo Excel, CSV o PDF con los datos de la brigada. Este es el primer paso obligatorio.',
+        isDone: function() { return !!uploadedFilename; },
+        pendingText: 'Pendiente: sube un archivo',
+        doneText: 'Archivo cargado'
+      },
+      {
+        num: 2,
+        title: 'Verificar datos',
+        icon: '\uD83D\uDD0D',
+        selector: '#verifySection',
+        scrollTo: '#verifySection',
+        desc: 'Revisa la tabla con los datos extraídos. Puedes editar celdas, cambiar valores y seleccionar qué filas enviar. Luego haz clic en "Guardar cambios y continuar".',
+        isDone: function() { return dataConfirmed; },
+        pendingText: 'Opcional: revisa los datos',
+        doneText: 'Datos verificados',
+        showAlways: false
+      },
+      {
+        num: 3,
+        title: 'Configurar carga',
+        icon: '\u2699\uFE0F',
+        selector: '.start.card .defaults-form',
+        scrollTo: '.start.card',
+        desc: 'Completa el Estado de la brigada, Lugar y coordenadas GPS si es necesario. Elige si quieres modo automático o manual, y si usas API.',
+        isDone: function() {
+          var est = (document.getElementById('inputEstadoBrigada') || {}).value;
+          var lug = (document.getElementById('inputLugar') || {}).value;
+          return !!(est && est.trim()) || !!(lug && lug.trim());
+        },
+        pendingText: 'Completa los datos de la brigada',
+        doneText: 'Datos configurados'
+      },
+      {
+        num: 4,
+        title: 'Iniciar carga',
+        icon: '\uD83D\uDE80',
+        selector: '#btnStart',
+        scrollTo: '.start-actions',
+        desc: 'Cuando todo esté listo, haz clic en "Iniciar carga" para comenzar el envío automático a KoboToolbox. Asegúrate de que el mapeo esté configurado.',
+        isDone: function() {
+          var ok = parseInt(statOk.textContent, 10) || 0;
+          return ok > 0;
+        },
+        pendingText: 'Listo para iniciar',
+        doneText: 'Carga realizada'
+      },
+      {
+        num: 5,
+        title: 'Seguir progreso',
+        icon: '\uD83D\uDCCA',
+        selector: '.progress.card',
+        scrollTo: '.progress.card',
+        desc: 'Observa el progreso en tiempo real: barra de avance, filas exitosas, fallidas y el log detallado. Al terminar podrás descargar el reporte de errores.',
+        isDone: function() { return false; },
+        pendingText: 'Se actualiza durante la carga',
+        doneText: 'Progreso visible'
+      }
+    ];
+
+    function getStepStates() {
+      return STEPS.map(function(s) { return s.isDone(); });
+    }
+
+    function getFirstIncompleteStep() {
+      var states = getStepStates();
+      for (var i = 0; i < states.length; i++) {
+        if (!states[i]) return i;
+      }
+      return 0;
+    }
+
+    function renderDots() {
+      var states = getStepStates();
+      var html = '';
+      for (var i = 0; i < STEPS.length; i++) {
+        var cls = 'guide-popup-dot';
+        if (i === currentStep) cls += ' active';
+        else if (states[i]) cls += ' done';
+        html += '<div class="' + cls + '" data-step="' + i + '"></div>';
+      }
+      guideDots.innerHTML = html;
+    }
+
+    function clearHighlight() {
+      if (highlightedEl) {
+        highlightedEl.classList.remove('guide-highlight', 'guide-spotlight');
+        highlightedEl = null;
+      }
+      pointer.style.display = 'none';
+    }
+
+    function highlightElement(el) {
+      clearHighlight();
+      if (!el) return;
+      el.classList.add('guide-highlight', 'guide-spotlight');
+      highlightedEl = el;
+    }
+
+    function positionPopup(targetEl) {
+      if (!targetEl) {
+        popup.style.top = '50%';
+        popup.style.left = '50%';
+        popup.style.transform = 'translate(-50%, -50%)';
+        arrow.style.display = 'none';
+        return;
+      }
+
+      var rect = targetEl.getBoundingClientRect();
+      var pw = 340;
+      var ph = popup.offsetHeight || 260;
+      var margin = 16;
+
+      var spaceBelow = window.innerHeight - rect.bottom;
+      var spaceAbove = rect.top;
+      var spaceRight = window.innerWidth - rect.right;
+
+      var top, left;
+      arrow.className = 'guide-popup-arrow';
+      arrow.style.display = 'block';
+
+      if (spaceBelow > ph + margin) {
+        top = rect.bottom + margin;
+        left = rect.left + (rect.width / 2) - (pw / 2);
+        arrow.classList.add('arrow-top');
+        arrow.style.top = '-7px';
+        arrow.style.left = (pw / 2 - 7) + 'px';
+        arrow.style.bottom = '';
+      } else if (spaceAbove > ph + margin) {
+        top = rect.top - ph - margin;
+        left = rect.left + (rect.width / 2) - (pw / 2);
+        arrow.classList.add('arrow-bottom');
+        arrow.style.bottom = '-7px';
+        arrow.style.top = '';
+        arrow.style.left = (pw / 2 - 7) + 'px';
+      } else {
+        top = rect.top;
+        left = rect.right + margin;
+        if (left + pw > window.innerWidth - 16) {
+          left = rect.left - pw - margin;
+        }
+        arrow.style.display = 'none';
+      }
+
+      left = Math.max(12, Math.min(left, window.innerWidth - pw - 12));
+      top = Math.max(12, Math.min(top, window.innerHeight - ph - 12));
+
+      popup.style.top = top + 'px';
+      popup.style.left = left + 'px';
+      popup.style.transform = 'none';
+
+      showPointer(targetEl);
+    }
+
+    function showPointer(el) {
+      if (!el) { pointer.style.display = 'none'; return; }
+      var rect = el.getBoundingClientRect();
+      pointer.textContent = '\uD83D\uDC47';
+      pointer.className = 'guide-pointer point-down';
+      pointer.style.display = 'block';
+      pointer.style.top = (rect.top - 36) + 'px';
+      pointer.style.left = (rect.left + rect.width / 2 - 16) + 'px';
+    }
+
+    function showStep(idx) {
+      if (idx < 0) idx = 0;
+      if (idx >= STEPS.length) idx = STEPS.length - 1;
+      currentStep = idx;
+      var step = STEPS[idx];
+      var done = step.isDone();
+
+      stepBadge.textContent = step.num;
+      stepTitle.textContent = step.title;
+      guideIcon.textContent = step.icon;
+      guideDesc.textContent = step.desc;
+
+      if (done) {
+        guideStatus.textContent = '\u2713 ' + step.doneText;
+        guideStatus.className = 'guide-popup-status done';
+      } else {
+        guideStatus.textContent = '\u25CB ' + step.pendingText;
+        guideStatus.className = 'guide-popup-status pending';
+      }
+
+      btnPrev.style.display = idx === 0 ? 'none' : '';
+      btnNext.textContent = idx === STEPS.length - 1 ? 'Cerrar' : 'Siguiente \u2192';
+
+      renderDots();
+
+      var targetEl = document.querySelector(step.selector);
+      var scrollTarget = document.querySelector(step.scrollTo || step.selector);
+
+      if (scrollTarget) {
+        scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      setTimeout(function() {
+        targetEl = document.querySelector(step.selector);
+        highlightElement(targetEl);
+        positionPopup(targetEl);
+
+        popup.classList.remove('visible');
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            popup.classList.add('visible');
+          });
+        });
+      }, 350);
+    }
+
+    function openGuide(startStep) {
+      if (guideActive) return;
+      guideActive = true;
+      overlay.classList.add('active');
+      btnHelp.style.display = 'none';
+
+      var idx = (startStep != null) ? startStep : getFirstIncompleteStep();
+      showStep(idx);
+    }
+
+    function closeGuide() {
+      guideActive = false;
+      overlay.classList.remove('active');
+      popup.classList.remove('visible');
+      clearHighlight();
+      pointer.style.display = 'none';
+      btnHelp.style.display = 'flex';
+    }
+
+    btnHelp.addEventListener('click', function() { openGuide(); });
+    btnClose.addEventListener('click', closeGuide);
+    overlayBg.addEventListener('click', closeGuide);
+
+    btnNext.addEventListener('click', function() {
+      if (currentStep >= STEPS.length - 1) {
+        closeGuide();
+      } else {
+        clearHighlight();
+        popup.classList.remove('visible');
+        showStep(currentStep + 1);
+      }
+    });
+
+    btnPrev.addEventListener('click', function() {
+      if (currentStep > 0) {
+        clearHighlight();
+        popup.classList.remove('visible');
+        showStep(currentStep - 1);
+      }
+    });
+
+    guideDots.addEventListener('click', function(ev) {
+      var dot = ev.target.closest('.guide-popup-dot');
+      if (!dot) return;
+      var idx = parseInt(dot.getAttribute('data-step'), 10);
+      if (!isNaN(idx)) {
+        clearHighlight();
+        popup.classList.remove('visible');
+        showStep(idx);
+      }
+    });
+
+    document.addEventListener('keydown', function(ev) {
+      if (!guideActive) return;
+      if (ev.key === 'Escape') closeGuide();
+      if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') {
+        ev.preventDefault();
+        if (currentStep < STEPS.length - 1) {
+          clearHighlight();
+          popup.classList.remove('visible');
+          showStep(currentStep + 1);
+        }
+      }
+      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        if (currentStep > 0) {
+          clearHighlight();
+          popup.classList.remove('visible');
+          showStep(currentStep - 1);
+        }
+      }
+    });
+
+    // Auto-detección: si el usuario intenta iniciar sin archivo, mostrar guía en paso 1
+    var origBtnStartClick = btnStart.onclick;
+    btnStart.addEventListener('click', function(ev) {
+      if (!uploadedFilename && !guideActive) {
+        ev.stopImmediatePropagation();
+        ev.preventDefault();
+        openGuide(0);
+        return false;
+      }
+    }, true);
+
+    // Pulso sutil en el botón de ayuda al inicio si no hay archivo cargado
+    setTimeout(function() {
+      if (!uploadedFilename) {
+        btnHelp.classList.add('help-btn--attention');
+        setTimeout(function() {
+          btnHelp.classList.remove('help-btn--attention');
+        }, 8000);
+      }
+    }, 3000);
+
+    window._helpGuide = { open: openGuide, close: closeGuide };
   })();
 
   // ── Init ─────────────────────────────────────────────────────────────────────

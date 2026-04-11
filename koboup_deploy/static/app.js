@@ -4,6 +4,7 @@
   // Secciones principales
   var sectionWork = document.getElementById('sectionWork');
   var sectionRefs = document.getElementById('sectionRefs');
+  var sectionRanking = document.getElementById('sectionRanking');
   var navBtns = document.querySelectorAll('.main-nav-btn');
 
   // Archivos de trabajo
@@ -15,10 +16,9 @@
   var uploadMsg = document.getElementById('uploadMsg');
   var filesList = document.getElementById('filesList');
   var btnRefresh = document.getElementById('btnRefresh');
-  var kpiTotal = document.getElementById('kpiTotal');
-  var kpiPending = document.getElementById('kpiPending');
-  var kpiReview = document.getElementById('kpiReview');
-  var kpiValid = document.getElementById('kpiValid');
+  var kpiPatients = document.getElementById('kpiPatients');
+  var kpiPatientsDetail = document.getElementById('kpiPatientsDetail');
+
 
   // Modal validar (multi-paso)
   var modalOverlay = document.getElementById('modalOverlay');
@@ -158,13 +158,17 @@
       navBtns.forEach(function (b) { b.classList.remove('active'); });
       btn.classList.add('active');
       var section = btn.getAttribute('data-section');
+      sectionWork.style.display = 'none';
+      sectionRefs.style.display = 'none';
+      sectionRanking.style.display = 'none';
       if (section === 'refs') {
-        sectionWork.style.display = 'none';
         sectionRefs.style.display = '';
         loadRefs();
+      } else if (section === 'ranking') {
+        sectionRanking.style.display = '';
+        loadRanking();
       } else {
         sectionWork.style.display = '';
-        sectionRefs.style.display = 'none';
         loadFiles();
       }
     });
@@ -557,12 +561,98 @@
     await loadFiles();
   });
 
+  // Botón descarga masiva
+  var btnBulkDownload = document.getElementById('btnBulkDownload');
+  var bulkDlModalOverlay = document.getElementById('bulkDlModalOverlay');
+  var bulkDlPassword = document.getElementById('bulkDlPassword');
+  var bulkDlMsg = document.getElementById('bulkDlMsg');
+  var bulkDlCancel = document.getElementById('bulkDlCancel');
+  var bulkDlConfirm = document.getElementById('bulkDlConfirm');
+
+  function updateBulkDownloadVisibility() {
+    if (btnBulkDownload) {
+      btnBulkDownload.style.display = currentFilter === 'validado' ? '' : 'none';
+    }
+  }
+
+  if (btnBulkDownload) {
+    btnBulkDownload.addEventListener('click', function () {
+      bulkDlPassword.value = '';
+      setMsg(bulkDlMsg, '');
+      bulkDlConfirm.disabled = false;
+      bulkDlModalOverlay.style.display = 'flex';
+      bulkDlPassword.focus();
+    });
+  }
+
+  bulkDlCancel.addEventListener('click', function () { bulkDlModalOverlay.style.display = 'none'; });
+  bulkDlModalOverlay.addEventListener('click', function (e) { if (e.target === bulkDlModalOverlay) bulkDlModalOverlay.style.display = 'none'; });
+
+  bulkDlPassword.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') bulkDlConfirm.click();
+  });
+
+  bulkDlConfirm.addEventListener('click', async function () {
+    var pwd = (bulkDlPassword.value || '').trim();
+    if (!pwd) {
+      bulkDlPassword.style.borderColor = '#ef4444';
+      bulkDlPassword.focus();
+      setMsg(bulkDlMsg, 'Ingresa la contraseña.', 'error');
+      return;
+    }
+    bulkDlPassword.style.borderColor = '';
+    bulkDlConfirm.disabled = true;
+    setMsg(bulkDlMsg, 'Generando ZIP, espera...', 'info');
+
+    try {
+      var r = await fetch('api/files/download-validated-zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd }),
+      });
+      if (r.status === 403) {
+        setMsg(bulkDlMsg, 'Contraseña incorrecta. Intenta de nuevo.', 'error');
+        bulkDlPassword.style.borderColor = '#ef4444';
+        bulkDlPassword.value = '';
+        bulkDlPassword.focus();
+        bulkDlConfirm.disabled = false;
+        return;
+      }
+      if (r.status === 404) {
+        setMsg(bulkDlMsg, 'No hay archivos validados para descargar.', 'error');
+        bulkDlConfirm.disabled = false;
+        return;
+      }
+      if (!r.ok) {
+        var errData = await r.json().catch(function () { return {}; });
+        throw new Error(errData.error || 'Error del servidor');
+      }
+      var blob = await r.blob();
+      var disposition = r.headers.get('Content-Disposition') || '';
+      var filenameMatch = disposition.match(/filename="?([^";\n]+)"?/);
+      var filename = filenameMatch ? filenameMatch[1] : 'archivos_validados.zip';
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      bulkDlModalOverlay.style.display = 'none';
+    } catch (e) {
+      setMsg(bulkDlMsg, 'Error: ' + e.message, 'error');
+      bulkDlConfirm.disabled = false;
+    }
+  });
+
   // Filtros
   document.querySelectorAll('#filterTabs .tab').forEach(function (btn) {
     btn.addEventListener('click', function () {
       document.querySelectorAll('#filterTabs .tab').forEach(function (b) { b.classList.remove('active'); });
       btn.classList.add('active');
       currentFilter = btn.getAttribute('data-filter') || '';
+      updateBulkDownloadVisibility();
       renderFiles();
     });
   });
@@ -574,7 +664,7 @@
       var data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Error');
       filesCache = data.files || [];
-      updateKpis();
+      loadPatientKpi();
       renderFiles();
       if (replacesRow.style.display !== 'none') populateReplacesSelect();
     } catch (e) {
@@ -582,20 +672,24 @@
     }
   }
 
-  function updateKpis() {
-    var active = filesCache.filter(function (f) { return f.status !== 'reemplazado'; });
-    var total = active.length;
-    var pending = active.filter(function (f) { return f.status === 'pendiente'; }).length;
-    var review = active.filter(function (f) { return f.status === 'por_validar'; }).length;
-    var valid = active.filter(function (f) { return f.status === 'validado'; }).length;
-    anim(kpiTotal, total); anim(kpiPending, pending); anim(kpiReview, review); anim(kpiValid, valid);
+  function fmtNum(n) {
+    return n.toLocaleString('es-MX');
   }
 
-  function anim(el, v) {
-    if (parseInt(el.textContent, 10) === v) return;
-    el.textContent = v;
-    el.style.transform = 'scale(1.15)';
-    setTimeout(function () { el.style.transform = 'scale(1)'; el.style.transition = 'transform 0.3s'; }, 50);
+  function loadPatientKpi() {
+    fetch('api/stats/records').then(function (r) { return r.json(); }).then(function (data) {
+      if (!data.ok) return;
+      var total = data.validated_records || 0;
+      var files = data.validated_files || 0;
+      if (kpiPatients) {
+        kpiPatients.textContent = fmtNum(total);
+        kpiPatients.style.transform = 'scale(1.06)';
+        setTimeout(function () { kpiPatients.style.transform = 'scale(1)'; }, 200);
+      }
+      if (kpiPatientsDetail) {
+        kpiPatientsDetail.textContent = 'en ' + files + ' archivo' + (files !== 1 ? 's' : '') + ' validado' + (files !== 1 ? 's' : '');
+      }
+    }).catch(function () {});
   }
 
   function renderFiles() {
@@ -636,6 +730,7 @@
       }
 
       var meta = '<span class="badge ' + statusBadgeClass(f.status) + '">' + statusLabel(f.status) + '</span>';
+      if (f.row_count != null && f.row_count > 0) meta += '<span class="sep">·</span><span class="file-row-count">' + fmtNum(f.row_count) + ' registros</span>';
       if (f.size_bytes) meta += '<span class="sep">·</span>' + fmtSize(f.size_bytes);
       meta += '<span class="sep">·</span>' + timeSince(f.created_at);
 
@@ -1514,6 +1609,115 @@
       alert('Error al eliminar: ' + e.message);
     }
   });
+
+  /* ═══════════════ RANKING ═══════════════ */
+
+  var rankingList = document.getElementById('rankingList');
+  var uploadersRankingList = document.getElementById('uploadersRankingList');
+  var btnRankRefresh = document.getElementById('btnRankRefresh');
+
+  if (btnRankRefresh) {
+    btnRankRefresh.addEventListener('click', function () { loadRanking(); });
+  }
+
+  var RANK_MEDALS = [
+    { emoji: '\uD83C\uDFC6', label: 'Campeon', badge: 'gold', bar: 'gold' },
+    { emoji: '\uD83E\uDD48', label: '2do lugar', badge: 'silver', bar: 'silver' },
+    { emoji: '\uD83E\uDD49', label: '3er lugar', badge: 'bronze', bar: 'bronze' }
+  ];
+
+  function getInitials(name) {
+    if (!name) return '?';
+    var parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.substring(0, 2).toUpperCase();
+  }
+
+  function renderRankingList(container, data, countLabel) {
+    if (!data || data.length === 0) {
+      container.innerHTML =
+        '<div class="empty-state">' +
+        '<svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24" opacity="0.3"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 1012 0V2Z"/></svg>' +
+        '<p>Aun no hay datos.</p></div>';
+      return;
+    }
+
+    var maxCount = data[0].count || 1;
+    var isLastSingle = data.length > 1;
+    var lastIdx = data.length - 1;
+
+    container.innerHTML = data.map(function (item, i) {
+      var pos = i + 1;
+      var medal = RANK_MEDALS[i] || null;
+      var isLast = isLastSingle && i === lastIdx && !medal;
+
+      var rowClass = 'rank-row';
+      var avatarClass = 'rank-avatar rank-avatar-default';
+      var countClass = 'rank-count-number rank-count-number-default';
+      var barClass = 'rank-bar-fill rank-bar-default';
+      var nameClass = 'rank-name';
+      var positionHtml;
+
+      if (medal) {
+        rowClass += ' rank-row-' + medal.badge;
+        avatarClass = 'rank-avatar rank-avatar-' + pos;
+        countClass = 'rank-count-number rank-count-number-' + medal.badge;
+        barClass = 'rank-bar-fill rank-bar-' + medal.badge;
+        positionHtml = '<div class="rank-position">' + medal.emoji + '</div>';
+        if (i === 0) nameClass += ' rank-name-gold';
+      } else if (isLast) {
+        rowClass += ' rank-row-last';
+        avatarClass = 'rank-avatar rank-avatar-last';
+        countClass = 'rank-count-number rank-count-number-last';
+        barClass = 'rank-bar-fill rank-bar-last';
+        positionHtml = '<div class="rank-position">\uD83D\uDCA9</div>';
+      } else {
+        positionHtml = '<div class="rank-position"><div class="rank-position-number">' + pos + '</div></div>';
+      }
+
+      var badgeHtml = '';
+      if (medal) {
+        badgeHtml = '<span class="rank-badge rank-badge-' + medal.badge + '">' + medal.emoji + ' ' + medal.label + '</span>';
+      } else if (isLast) {
+        badgeHtml = '<span class="rank-badge rank-badge-last">\uD83D\uDCA9 Ultimo lugar</span>';
+      }
+
+      var barWidth = Math.round((item.count / maxCount) * 100);
+
+      var detailText = '';
+      var lastDate = item.last_validated_at || item.last_upload_at || '';
+      if (lastDate) detailText = 'Ultima actividad: ' + timeSince(lastDate);
+
+      return '<div class="' + rowClass + '">' +
+        positionHtml +
+        '<div class="' + avatarClass + '">' + getInitials(item.name) + '</div>' +
+        '<div class="rank-info">' +
+          '<div class="' + nameClass + '">' + esc(item.name) + '</div>' +
+          (detailText ? '<div class="rank-detail">' + detailText + '</div>' : '') +
+        '</div>' +
+        '<div class="rank-bar-wrap"><div class="' + barClass + '" style="width:' + barWidth + '%"></div></div>' +
+        '<div class="rank-count">' +
+          '<div class="' + countClass + '">' + item.count + '</div>' +
+          '<div class="rank-count-label">' + countLabel + '</div>' +
+        '</div>' +
+        badgeHtml +
+      '</div>';
+    }).join('');
+  }
+
+  async function loadRanking() {
+    try {
+      var r = await fetch('api/stats/ranking');
+      var data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Error');
+      renderRankingList(rankingList, data.validators || [], 'validados');
+      renderRankingList(uploadersRankingList, data.uploaders || [], 'subidos');
+    } catch (e) {
+      if (rankingList) {
+        rankingList.innerHTML = '<div class="empty-state"><p>Error al cargar ranking</p><span>' + esc(e.message) + '</span></div>';
+      }
+    }
+  }
 
   /* ═══════════════ INICIO ═══════════════ */
   loadFiles();

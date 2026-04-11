@@ -798,10 +798,13 @@ def download_failed_excel():
 @app.route("/api/checkpoint", methods=["GET"])
 def get_checkpoint():
     """Devuelve el último checkpoint guardado."""
-    from runner import load_checkpoint
-    cp = load_checkpoint()
-    if cp:
-        return jsonify({"ok": True, "checkpoint": cp})
+    try:
+        from runner import load_checkpoint
+        cp = load_checkpoint()
+        if cp:
+            return jsonify({"ok": True, "checkpoint": cp})
+    except Exception:
+        pass
     return jsonify({"ok": False, "checkpoint": None})
 
 
@@ -833,7 +836,8 @@ def reload_file():
 
 @app.route("/api/historial", methods=["GET"])
 def get_historial():
-    """Devuelve las últimas N entradas del historial de cargas."""
+    """Devuelve las últimas N entradas del historial de cargas,
+    más un resumen de archivos exitosos con URL de descarga."""
     from config import LOGS_DIR as LD
     historial_file = LD / "historial.jsonl"
     entries = []
@@ -847,8 +851,112 @@ def get_historial():
                     pass
     except Exception:
         pass
-    # Devolver todas las entradas, más recientes primero (el frontend filtra por fecha)
-    return jsonify({"ok": True, "entries": list(reversed(entries))})
+
+    archivos_exitosos = _build_archivos_exitosos(entries)
+
+    return jsonify({
+        "ok": True,
+        "entries": list(reversed(entries)),
+        "archivos_exitosos": archivos_exitosos,
+    })
+
+
+def _build_archivos_exitosos(entries: list[dict]) -> list[dict]:
+    """Agrupa entradas del historial por nombre de archivo y devuelve
+    solo aquellos con al menos 1 fila exitosa, con URL de descarga si
+    el archivo aún existe en uploads/."""
+    agg: dict[str, dict] = {}
+    for e in entries:
+        nombre_orig = (e.get("archivo_original") or e.get("archivo") or "").strip()
+        nombre_interno = (e.get("archivo") or "").strip()
+        if not nombre_orig:
+            continue
+        if nombre_orig not in agg:
+            agg[nombre_orig] = {
+                "nombre_original": nombre_orig,
+                "archivo_interno": nombre_interno,
+                "exitosos": 0,
+                "fallidos": 0,
+                "total": 0,
+                "cargas": 0,
+                "ultima_fecha": "",
+            }
+        a = agg[nombre_orig]
+        a["exitosos"] += e.get("exitosos", 0)
+        a["fallidos"] += e.get("fallidos", 0)
+        a["total"] += e.get("total", 0)
+        a["cargas"] += 1
+        fecha = e.get("fecha", "")
+        if fecha > a["ultima_fecha"]:
+            a["ultima_fecha"] = fecha
+        if nombre_interno and not a["archivo_interno"]:
+            a["archivo_interno"] = nombre_interno
+
+    result = []
+    for a in agg.values():
+        if a["exitosos"] <= 0:
+            continue
+        interno = a["archivo_interno"]
+        download_url = ""
+        file_exists = False
+        if interno:
+            path = UPLOAD_DIR / interno
+            if path.exists():
+                file_exists = True
+                download_url = f"/api/uploads/{interno}/download"
+        a["download_url"] = download_url
+        a["file_exists"] = file_exists
+        result.append(a)
+
+    result.sort(key=lambda x: x["ultima_fecha"], reverse=True)
+    return result
+
+
+@app.route("/api/uploads/<path:filename>/download", methods=["GET"])
+def download_upload_file(filename: str):
+    """Descarga un archivo del directorio uploads/."""
+    safe = secure_filename(filename)
+    path = UPLOAD_DIR / safe
+    if not path.exists():
+        return jsonify({"error": "Archivo no encontrado"}), 404
+    return send_file(str(path), as_attachment=True, download_name=safe)
+
+
+@app.route("/api/uploads/<path:filename>/preview", methods=["GET"])
+def preview_upload_file(filename: str):
+    """Lee un archivo Excel/CSV de uploads/ y devuelve headers + filas como JSON."""
+    import pandas as pd
+
+    safe = secure_filename(filename)
+    path = UPLOAD_DIR / safe
+    if not path.exists():
+        return jsonify({"error": "Archivo no encontrado"}), 404
+
+    try:
+        ext = path.suffix.lower()
+        if ext == ".csv":
+            df = pd.read_csv(path, dtype=str, keep_default_na=False)
+        elif ext in (".xlsx", ".xls"):
+            df = pd.read_excel(path, dtype=str, keep_default_na=False)
+        else:
+            return jsonify({"error": f"Formato no soportado: {ext}"}), 400
+
+        df = df.fillna("")
+        max_rows = int(request.args.get("limit", 500))
+        truncated = len(df) > max_rows
+        headers = list(df.columns)
+        rows = df.head(max_rows).values.tolist()
+
+        return jsonify({
+            "ok": True,
+            "filename": safe,
+            "headers": headers,
+            "rows": rows,
+            "total_rows": len(df),
+            "truncated": truncated,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Discover form ─────────────────────────────────────────────────────────────

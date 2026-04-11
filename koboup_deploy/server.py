@@ -3,8 +3,10 @@ Servidor Flask independiente para gestión de archivos Excel/PDF.
 Subir, descargar, listar y marcar como validados.
 """
 
+import io
 import logging
 import os
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -19,13 +21,17 @@ from file_store import (
     VALIDATED_DIR,
     add_file_record,
     add_ref_record,
+    count_file_rows,
     delete_file_record,
     delete_ref_record,
     ensure_validated_location,
     get_file_path,
     get_file_record,
+    get_record_stats,
     get_ref_file_path,
     get_ref_record,
+    get_uploader_stats,
+    get_validator_stats,
     has_validated_replacement,
     init_files_db,
     list_file_records,
@@ -34,6 +40,7 @@ from file_store import (
     mark_file_validated,
     supersede_matching_files,
     supersede_specific_file,
+    update_row_count,
     update_status,
 )
 
@@ -117,6 +124,12 @@ def upload_file():
         notes=notes,
         uploaded_by=uploaded_by,
     )
+
+    if ext != "pdf":
+        row_count = count_file_rows(dest_path)
+        if row_count is not None:
+            update_row_count(record["id"], row_count)
+            record["row_count"] = row_count
 
     superseded = []
     if target_status == "validado":
@@ -374,6 +387,85 @@ def delete_ref(ref_id: int):
         pass
     delete_ref_record(ref_id)
     return jsonify({"ok": True})
+
+
+BULK_DOWNLOAD_PASSWORD = "vamoscontodo"
+
+
+@app.route("/api/files/download-validated-zip", methods=["POST"])
+def download_validated_zip():
+    """Descarga masiva de todos los archivos validados en un .zip protegido por contraseña."""
+    data = request.get_json(silent=True) or {}
+    password = (data.get("password") or "").strip()
+    if password != BULK_DOWNLOAD_PASSWORD:
+        return jsonify({"error": "Contraseña incorrecta"}), 403
+
+    validated = list_file_records("validado")
+    if not validated:
+        return jsonify({"error": "No hay archivos validados para descargar"}), 404
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        seen_names: dict[str, int] = {}
+        for entry in validated:
+            path = get_file_path(entry)
+            if not path.exists():
+                continue
+            dl_name = entry.get("original_name") or entry.get("stored_name")
+            if dl_name in seen_names:
+                seen_names[dl_name] += 1
+                stem = Path(dl_name).stem
+                ext = Path(dl_name).suffix
+                dl_name = f"{stem} ({seen_names[dl_name]}){ext}"
+            else:
+                seen_names[dl_name] = 0
+            zf.write(path, dl_name)
+
+    buf.seek(0)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"archivos_validados_{timestamp}.zip",
+    )
+
+
+@app.route("/api/stats/ranking", methods=["GET"])
+def get_ranking():
+    validators = get_validator_stats()
+    uploaders = get_uploader_stats()
+    return jsonify({"ok": True, "validators": validators, "uploaders": uploaders})
+
+
+@app.route("/api/stats/records", methods=["GET"])
+def records_stats():
+    """Retorna estadísticas de registros (filas) de archivos validados."""
+    stats = get_record_stats()
+    return jsonify({"ok": True, **stats})
+
+
+@app.route("/api/stats/recount", methods=["POST"])
+def recount_all():
+    """Recuenta filas de todos los archivos Excel/CSV que no tengan row_count."""
+    from file_store import _connect
+
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, stored_name, status, file_type FROM files WHERE row_count IS NULL AND file_type != 'pdf'"
+        ).fetchall()
+
+    updated = 0
+    for row in rows:
+        entry = {"stored_name": row["stored_name"], "status": row["status"]}
+        path = get_file_path(entry)
+        if path.exists():
+            rc = count_file_rows(path)
+            if rc is not None:
+                update_row_count(row["id"], rc)
+                updated += 1
+
+    return jsonify({"ok": True, "updated": updated, "total_checked": len(rows)})
 
 
 if __name__ == "__main__":

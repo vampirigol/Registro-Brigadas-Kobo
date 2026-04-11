@@ -6,12 +6,16 @@ También gestiona archivos PDF de referencia organizados por ubicación.
 
 from __future__ import annotations
 
+import csv
+import logging
 import re
 import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+log = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 FILES_DB_PATH = BASE_DIR / "logs" / "files.db"
@@ -21,17 +25,25 @@ REFERENCES_DIR = BASE_DIR / "uploads" / "referencias"
 
 VALID_STATUSES = ("pendiente", "por_validar", "validado", "reemplazado")
 
-_SUFFIX_RE = re.compile(
+_COPY_SUFFIX_RE = re.compile(r"\s*\(\d+\)\s*$")
+
+_STATUS_SUFFIX_RE = re.compile(
     r"[_\s\-]*(verificar|verificado|validar|validado|completar|completado|"
-    r"corregir|corregido|correccion|corrección|revisar|revisado|final)\s*$",
+    r"corregir|corregido|correccion|corrección|revisar|revisado|final)"
+    r"(\s*\(\d+\))?\s*$",
     re.IGNORECASE,
 )
 
+_TIMESTAMP_RE = re.compile(r"[_\s\-]*\d{14}\s*$")
+
 
 def extract_base_name(filename: str) -> str:
-    """Extrae el prefijo base removiendo extensión y sufijos de estado."""
+    """Extrae el prefijo base removiendo extensión, (1), sufijos de estado y timestamps."""
     stem = Path(filename).stem
-    return _SUFFIX_RE.sub("", stem).rstrip("_- ")
+    stem = _STATUS_SUFFIX_RE.sub("", stem)
+    stem = _COPY_SUFFIX_RE.sub("", stem)
+    stem = _TIMESTAMP_RE.sub("", stem)
+    return stem.rstrip("_- ")
 
 
 def _connect() -> sqlite3.Connection:
@@ -72,6 +84,8 @@ def init_files_db() -> None:
             conn.execute("ALTER TABLE files ADD COLUMN downloaded_at TEXT")
         if "superseded_by" not in cols:
             conn.execute("ALTER TABLE files ADD COLUMN superseded_by INTEGER")
+        if "row_count" not in cols:
+            conn.execute("ALTER TABLE files ADD COLUMN row_count INTEGER")
 
         conn.execute(
             """
@@ -312,3 +326,123 @@ def list_ref_locations() -> List[str]:
 
 def get_ref_file_path(record: Dict[str, Any]) -> Path:
     return REFERENCES_DIR / record["stored_name"]
+
+
+# ── Conteo de filas en archivos Excel/CSV ──────────────────────────
+
+
+def count_file_rows(file_path: Path) -> Optional[int]:
+    """Cuenta las filas con datos en un archivo Excel o CSV (excluyendo encabezado)."""
+    suffix = file_path.suffix.lower()
+    try:
+        if suffix in (".xlsx", ".xls"):
+            return _count_excel_rows(file_path)
+        elif suffix == ".csv":
+            return _count_csv_rows(file_path)
+    except Exception as exc:
+        log.warning("No se pudo contar filas de %s: %s", file_path.name, exc)
+    return None
+
+
+def _count_excel_rows(path: Path) -> int:
+    import openpyxl
+
+    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+    total = 0
+    for ws in wb.worksheets:
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if any(c is not None for c in row):
+                total += 1
+    wb.close()
+    return total
+
+
+def _count_csv_rows(path: Path) -> int:
+    for enc in ("utf-8", "latin-1", "cp1252"):
+        try:
+            count = 0
+            with open(path, "r", encoding=enc, errors="replace") as f:
+                reader = csv.reader(f)
+                next(reader, None)  # skip header
+                for row in reader:
+                    if any(cell.strip() for cell in row):
+                        count += 1
+            return count
+        except Exception:
+            continue
+    return 0
+
+
+def update_row_count(file_id: int, row_count: int) -> None:
+    """Actualiza el conteo de filas de un archivo."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE files SET row_count = ? WHERE id = ?",
+            (row_count, file_id),
+        )
+
+
+def get_record_stats() -> Dict[str, Any]:
+    """Retorna estadísticas de registros (filas) por estado de archivo."""
+    with _connect() as conn:
+        total_rows = conn.execute(
+            "SELECT COALESCE(SUM(row_count), 0) FROM files WHERE status != 'reemplazado' AND row_count IS NOT NULL"
+        ).fetchone()[0]
+        validated_rows = conn.execute(
+            "SELECT COALESCE(SUM(row_count), 0) FROM files WHERE status = 'validado' AND row_count IS NOT NULL"
+        ).fetchone()[0]
+        pending_rows = conn.execute(
+            "SELECT COALESCE(SUM(row_count), 0) FROM files WHERE status = 'pendiente' AND row_count IS NOT NULL"
+        ).fetchone()[0]
+        review_rows = conn.execute(
+            "SELECT COALESCE(SUM(row_count), 0) FROM files WHERE status = 'por_validar' AND row_count IS NOT NULL"
+        ).fetchone()[0]
+        validated_files = conn.execute(
+            "SELECT COUNT(*) FROM files WHERE status = 'validado'"
+        ).fetchone()[0]
+        total_files = conn.execute(
+            "SELECT COUNT(*) FROM files WHERE status != 'reemplazado'"
+        ).fetchone()[0]
+    return {
+        "total_records": total_rows,
+        "validated_records": validated_rows,
+        "pending_records": pending_rows,
+        "review_records": review_rows,
+        "validated_files": validated_files,
+        "total_files": total_files,
+    }
+
+
+# ── Estadísticas de validación ─────────────────────────────────────
+
+
+def get_validator_stats() -> List[Dict[str, Any]]:
+    """Retorna ranking de personas por cantidad de archivos validados."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT validated_by AS name, COUNT(*) AS count,
+                   MAX(validated_at) AS last_validated_at
+            FROM files
+            WHERE validated_by IS NOT NULL AND validated_by != ''
+            GROUP BY validated_by
+            ORDER BY count DESC, last_validated_at DESC
+            """
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_uploader_stats() -> List[Dict[str, Any]]:
+    """Retorna ranking de personas por cantidad de archivos subidos."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT uploaded_by AS name, COUNT(*) AS count,
+                   MAX(created_at) AS last_upload_at
+            FROM files
+            WHERE uploaded_by IS NOT NULL AND uploaded_by != ''
+            GROUP BY uploaded_by
+            ORDER BY count DESC, last_upload_at DESC
+            """
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]

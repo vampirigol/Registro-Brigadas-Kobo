@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="static/style.css?v=20260410d">
+  <link rel="stylesheet" href="static/style.css?v=20260411a">
 </head>
 <body>
 
@@ -39,38 +39,25 @@
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
         PDFs de referencia
       </button>
+      <button class="main-nav-btn" data-section="ranking">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 1012 0V2Z"/></svg>
+        Ranking
+      </button>
     </div>
   </nav>
 
   <!-- ═══════════════ SECCIÓN 1: Archivos de trabajo ═══════════════ -->
   <main class="container section-content" id="sectionWork">
 
-    <section class="kpi-strip">
-      <div class="kpi">
-        <div class="kpi-icon kpi-icon-total">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        </div>
-        <div><div class="kpi-value" id="kpiTotal">0</div><div class="kpi-label">Total</div></div>
+    <section class="kpi-hero">
+      <div class="kpi-hero-icon">
+        <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
       </div>
-      <div class="kpi">
-        <div class="kpi-icon kpi-icon-pending">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        </div>
-        <div><div class="kpi-value" id="kpiPending">0</div><div class="kpi-label">Pendientes</div></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-icon kpi-icon-review">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        </div>
-        <div><div class="kpi-value" id="kpiReview">0</div><div class="kpi-label">En validación</div></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-icon kpi-icon-valid">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        </div>
-        <div><div class="kpi-value" id="kpiValid">0</div><div class="kpi-label">Validados</div></div>
-      </div>
+      <div class="kpi-hero-number" id="kpiPatients">—</div>
+      <div class="kpi-hero-label">Pacientes registrados</div>
+      <div class="kpi-hero-sub" id="kpiPatientsDetail">en archivos validados</div>
     </section>
+
 
     <section class="panel">
       <div class="panel-header"><h2>Subir archivo</h2></div>
@@ -191,6 +178,11 @@
             <button class="tab" data-filter="validado">Validados</button>
             <button class="tab" data-filter="reemplazado">Reemplazados</button>
           </div>
+          <button type="button" id="btnBulkDownload" class="btn btn-bulk-download" title="Descargar todos los archivos validados en ZIP" style="display:none">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 12l-4-4h3V4h2v4h3l-4 4z"/></svg>
+            Descarga masiva ZIP
+          </button>
           <button type="button" id="btnRefresh" class="btn btn-icon" title="Actualizar">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
           </button>
@@ -288,6 +280,52 @@
             <svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24" opacity="0.3"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <p>Aún no hay PDFs de referencia.</p>
             <span>Sube el primero usando la sección de arriba.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════════ SECCIÓN 3: Ranking ═══════════════ -->
+  <main class="container section-content" id="sectionRanking" style="display:none">
+
+    <section class="ranking-hero">
+      <div class="ranking-hero-icon">
+        <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 1012 0V2Z"/></svg>
+      </div>
+      <h2>Tabla de Honor</h2>
+      <p>Ranking de validaciones por persona</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Validadores</h2>
+        <div class="panel-header-actions">
+          <button type="button" id="btnRankRefresh" class="btn btn-icon" title="Actualizar">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="panel-body panel-body-flush">
+        <div id="rankingList" class="ranking-grid">
+          <div class="empty-state">
+            <svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24" opacity="0.3"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 1012 0V2Z"/></svg>
+            <p>Aun no hay validaciones registradas.</p>
+            <span>Cuando se validen archivos, el ranking aparecera aqui.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Contribuidores (archivos subidos)</h2>
+      </div>
+      <div class="panel-body panel-body-flush">
+        <div id="uploadersRankingList" class="ranking-grid">
+          <div class="empty-state">
+            <p>Aun no hay archivos subidos.</p>
           </div>
         </div>
       </div>
@@ -455,10 +493,33 @@
     </div>
   </div>
 
+  <!-- Modal para descarga masiva (contraseña) -->
+  <div class="modal-overlay" id="bulkDlModalOverlay" style="display:none">
+    <div class="modal">
+      <div class="modal-icon-wrap modal-icon-bulk">
+        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      </div>
+      <h3>Descarga masiva protegida</h3>
+      <p class="bulk-dl-desc">Ingresa la contraseña para descargar todos los archivos validados en un archivo ZIP.</p>
+      <div class="form-group">
+        <label>Contraseña <span class="required">*</span></label>
+        <input type="password" id="bulkDlPassword" class="input-flat" placeholder="Ingresa la contraseña" autocomplete="off">
+      </div>
+      <div id="bulkDlMsg" class="toast-msg"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="bulkDlCancel">Cancelar</button>
+        <button class="btn btn-primary" id="bulkDlConfirm">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Descargar ZIP
+        </button>
+      </div>
+    </div>
+  </div>
+
   <footer class="footer">
     <p>KoboUp — Sistema de gestión de archivos &middot; Clínica Adventista</p>
   </footer>
 
-  <script src="static/app.js?v=20260410d"></script>
+  <script src="static/app.js?v=20260411a"></script>
 </body>
 </html>
