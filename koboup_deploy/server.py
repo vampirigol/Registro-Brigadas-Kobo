@@ -3,9 +3,12 @@ Servidor Flask independiente para gestión de archivos Excel/PDF.
 Subir, descargar, listar y marcar como validados.
 """
 
+import csv
 import io
 import logging
 import os
+import re
+import unicodedata
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -68,6 +71,177 @@ def _augment(entry: dict) -> dict:
     if fid is not None:
         entry["download_url"] = f"api/files/{fid}/download"
     return entry
+
+
+def _norm_text(value: str) -> str:
+    text = str(value or "").strip().lower()
+    text = unicodedata.normalize("NFD", text)
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+
+
+def _normalize_header(value: str) -> str:
+    text = _norm_text(value)
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def _build_row_dict(headers: list[str], values: list[object]) -> dict[str, str]:
+    row: dict[str, str] = {}
+    for idx, header in enumerate(headers):
+        cell = values[idx] if idx < len(values) else ""
+        row[header] = "" if cell is None else str(cell).strip()
+    return row
+
+
+def _load_records_from_file(path: Path) -> list[dict[str, str]]:
+    suffix = path.suffix.lower()
+    if suffix in {".xlsx", ".xls"}:
+        import openpyxl
+
+        wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+        try:
+            ws = wb.worksheets[0]
+            rows = ws.iter_rows(values_only=True)
+            headers_row = next(rows, None)
+            if not headers_row:
+                return []
+            headers = [str(cell).strip() if cell is not None else "" for cell in headers_row]
+            return [
+                _build_row_dict(headers, list(values))
+                for values in rows
+                if values and any(cell not in (None, "") for cell in values)
+            ]
+        finally:
+            wb.close()
+
+    if suffix == ".csv":
+        for encoding in ("utf-8-sig", "utf-8", "latin-1", "cp1252"):
+            try:
+                with open(path, "r", encoding=encoding, errors="replace", newline="") as fh:
+                    sample = fh.read(4096)
+                    fh.seek(0)
+                    try:
+                        dialect = csv.Sniffer().sniff(sample, delimiters=",;|\t")
+                    except Exception:
+                        dialect = csv.excel
+                    reader = csv.reader(fh, dialect)
+                    headers = next(reader, None)
+                    if not headers:
+                        return []
+                    headers = [str(cell).strip() if cell is not None else "" for cell in headers]
+                    return [
+                        _build_row_dict(headers, row)
+                        for row in reader
+                        if row and any(str(cell).strip() for cell in row)
+                    ]
+            except Exception:
+                continue
+    return []
+
+
+def _pick_value(row: dict[str, str], aliases: list[str]) -> str:
+    normalized = {_normalize_header(key): value for key, value in row.items()}
+    for alias in aliases:
+        value = normalized.get(_normalize_header(alias), "")
+        if str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _normalize_service(raw: str) -> str:
+    service_norm = _norm_text(raw)
+    alias_map = [
+        ("Dental", ["dental", "odontologia", "odontologia"]),
+        ("Fisioterapia", ["fisioterapia", "fisio", "rehabilitacion"]),
+        ("Oftalmología", ["oftalmologia", "optica", "vision", "lentes"]),
+        ("Laboratorios", ["laboratorio", "laboratorios", "lab", "examenes"]),
+        ("Medicina General", ["medicina general", "medicina", "consulta", "medico"]),
+    ]
+    for label, keywords in alias_map:
+        if any(keyword in service_norm for keyword in keywords):
+            return label
+    return "Medicina General"
+
+
+def _compute_public_kpis() -> dict:
+    files = list_file_records("validado")
+    specialties_order = [
+        "Medicina General",
+        "Dental",
+        "Fisioterapia",
+        "Oftalmología",
+        "Laboratorios",
+    ]
+    specialties = {name: 0 for name in specialties_order}
+    supplies = {"kit_dental": 0, "medicamento": 0, "lentes": 0}
+    seen_consultations: set[tuple[str, str, str, str, str]] = set()
+    seen_patients: set[tuple[str, str, str, str]] = set()
+
+    med_keywords = [
+        "medicamento", "medicina", "pastilla", "tableta", "capsula", "capsula",
+        "jarabe", "crema", "pomada", "amoxicilina", "ibuprofeno", "paracetamol",
+        "omeprazol", "metformina", "insulina", "salbutamol", "albendazol", "vitamina",
+    ]
+    lens_keywords = ["lentes", "anteojos", "armazon", "armazon", "graduacion", "montura", "bifocal"]
+    kit_keywords = ["kit dental", "cepillo dental", "pasta dental", "hilo dental"]
+
+    for file_entry in files:
+        path = get_file_path(file_entry)
+        if not path.exists() or file_entry.get("file_type") == "pdf":
+            continue
+        try:
+            rows = _load_records_from_file(path)
+        except Exception as exc:
+            logging.warning("No se pudo leer %s para KPI: %s", path.name, exc)
+            continue
+
+        for row in rows:
+            name = _pick_value(row, ["NAME", "Nombre del Paciente", "Nombre"])
+            date = _pick_value(row, ["Fecha_de_atenci_n", "Fecha de Atención", "Fecha de atención", "Fecha atención", "Fecha"])
+            sex = _pick_value(row, ["SEX", "Sexo"])
+            age = _pick_value(row, ["AGE", "Edad"])
+            service = _pick_value(row, ["Servicio_que_se_brinda", "Servicio que se brinda", "Servicio", "Especialidad"])
+            service_label = _normalize_service(service)
+
+            patient_key = (_norm_text(name), date.strip(), _norm_text(sex), age.strip())
+            if any(patient_key):
+                seen_patients.add(patient_key)
+
+            consultation_key = patient_key + (service_label,)
+            if consultation_key in seen_consultations:
+                continue
+            seen_consultations.add(consultation_key)
+            specialties[service_label] += 1
+
+            supply_text = " | ".join(
+                part for part in [
+                    _pick_value(row, ["Resultados_Lab_Insumos", "Resultados Lab / Insumos", "Insumos Entregados", "Insumos"]),
+                    _pick_value(row, ["Tratamiento", "Medicamentos", "Tx"]),
+                    _pick_value(row, ["Especifique_qu_se_entrega", "Especifique qué se entrega", "Especifique que se entrega", "Especifique"]),
+                ]
+                if part
+            )
+            supply_norm = _norm_text(supply_text)
+            if supply_norm and any(keyword in supply_norm for keyword in kit_keywords):
+                supplies["kit_dental"] += 1
+            if supply_norm and any(keyword in supply_norm for keyword in med_keywords):
+                supplies["medicamento"] += 1
+            if supply_norm and any(keyword in supply_norm for keyword in lens_keywords):
+                supplies["lentes"] += 1
+
+    return {
+        "patients_registered": len(seen_patients),
+        "total_consultations": sum(specialties.values()),
+        "specialties": [
+            {"key": _normalize_header(name).replace(" ", "_"), "label": name, "count": specialties[name]}
+            for name in specialties_order
+        ],
+        "supplies": [
+            {"key": "kit_dental", "label": "Kit dental", "count": supplies["kit_dental"]},
+            {"key": "medicamento", "label": "Medicamento", "count": supplies["medicamento"]},
+            {"key": "lentes", "label": "Lentes", "count": supplies["lentes"]},
+        ],
+        "validated_files": len(files),
+    }
 
 
 @app.route("/")
@@ -443,6 +617,16 @@ def records_stats():
     """Retorna estadísticas de registros (filas) de archivos validados."""
     stats = get_record_stats()
     return jsonify({"ok": True, **stats})
+
+
+@app.route("/api/stats/kpis", methods=["GET"])
+def public_kpis():
+    """Retorna KPI públicos reconstruidos desde archivos validados."""
+    try:
+        return jsonify({"ok": True, "kpis": _compute_public_kpis()})
+    except Exception as exc:
+        logging.exception("Error al calcular KPI públicos")
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @app.route("/api/stats/recount", methods=["POST"])
