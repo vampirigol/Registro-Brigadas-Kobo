@@ -55,7 +55,24 @@
       </div>
       <div class="kpi-hero-number" id="kpiPatients">—</div>
       <div class="kpi-hero-label">Pacientes registrados</div>
-      <div class="kpi-hero-sub" id="kpiPatientsDetail">en archivos validados</div>
+      <div class="kpi-hero-sub" id="kpiPatientsDetail">sin duplicados ya validados</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><h2>KPI de atención</h2></div>
+      <div class="panel-body">
+        <div class="kpi-mini-grid" id="kpiSummaryGrid">
+          <div class="kpi-mini-card">
+            <div class="kpi-mini-label">Consultas totales</div>
+            <div class="kpi-mini-value" id="kpiConsultations">—</div>
+            <div class="kpi-mini-sub">Por especialidad</div>
+          </div>
+        </div>
+        <div class="kpi-section-title">Consultas por especialidad</div>
+        <div class="kpi-mini-grid" id="kpiSpecialties"></div>
+        <div class="kpi-section-title">Insumos entregados totales</div>
+        <div class="kpi-mini-grid" id="kpiSupplies"></div>
+      </div>
     </section>
 
 
@@ -521,5 +538,6 @@
   </footer>
 
   <script src="static/app.js?v=20260411a"></script>
+  <script src="static/kpi.js?v=20260414a"></script>
 </body>
 </html>
