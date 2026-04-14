@@ -9,7 +9,7 @@
   <title>Carga KoboToolbox</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/style.css?v=25">
+  <link rel="stylesheet" href="/static/style.css?v=27">
 </head>
 <body>
   <div class="app-layout">
@@ -52,6 +52,7 @@
         <div class="koboup-list-header">
           <span class="kq-col-num">#</span>
           <span class="kq-col-name">Archivo</span>
+          <span class="kq-col-sent">Cargados</span>
           <span class="kq-col-status">Estado</span>
           <span class="kq-col-action"></span>
         </div>
@@ -150,7 +151,9 @@
           </label>
         </div>
         <div class="start-actions">
-          <button type="button" id="btnStart" class="btn btn-primary btn-large" disabled data-tooltip="Inicia el proceso de llenado automático.">Iniciar carga</button>
+          <span id="btnStartWrapper" class="btn-start-wrapper" data-tooltip="Inicia el proceso de llenado automático.">
+            <button type="button" id="btnStart" class="btn btn-primary btn-large" disabled>Iniciar carga</button>
+          </span>
           <button type="button" id="btnStop" class="btn btn-danger btn-large" style="display:none" data-tooltip="Detiene el proceso de carga en curso.">Detener</button>
         </div>
       </section>
@@ -190,17 +193,21 @@
         </h2>
         <div id="historialContent" class="historial-content" style="display:none">
           <div id="kpiSummary" class="kpi-grid">
-            <div class="kpi-card" data-tooltip="Archivos con al menos 1 fila exitosa.">
-              <div class="kpi-label">Archivos con éxito</div>
-              <div class="kpi-value" id="kpiArchivos">0</div>
-              <div class="kpi-sub">Con al menos 1 fila enviada</div>
+            <div class="kpi-card" data-tooltip="Pacientes únicos ya cargados a Kobo; los repetidos no se cuentan dos veces.">
+              <div class="kpi-label">Pacientes registrados</div>
+              <div class="kpi-value" id="kpiPatients">0</div>
+              <div class="kpi-sub">Únicos ya enviados a Kobo</div>
             </div>
-            <div class="kpi-card" data-tooltip="Total de pacientes enviados.">
-              <div class="kpi-label">Filas exitosas</div>
-              <div class="kpi-value" id="kpiFilas">0</div>
-              <div class="kpi-sub">Pacientes enviados en total</div>
+            <div class="kpi-card" data-tooltip="Suma de consultas únicas enviadas, agrupadas por especialidad.">
+              <div class="kpi-label">Consultas totales</div>
+              <div class="kpi-value" id="kpiConsultas">0</div>
+              <div class="kpi-sub">Por especialidad</div>
             </div>
           </div>
+          <div class="hist-archivos-titulo">Consultas por especialidad</div>
+          <div id="kpiSpecialties" class="kpi-grid"></div>
+          <div class="hist-archivos-titulo">Insumos entregados totales</div>
+          <div id="kpiSupplies" class="kpi-grid"></div>
           <div id="historialArchivos" class="historial-archivos"></div>
           <div id="historialList" class="historial-list"></div>
         </div>
@@ -262,6 +269,6 @@
   <!-- Puntero animado -->
   <div class="guide-pointer" id="guidePointer" style="display:none"></div>
 
-  <script src="/static/app.js?v=25"></script>
+  <script src="/static/app.js?v=29"></script>
 </body>
 </html>

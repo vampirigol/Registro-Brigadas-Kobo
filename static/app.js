@@ -54,8 +54,10 @@
   const historialArchivos = document.getElementById('historialArchivos');
   
   const kpiSummaryEl = document.getElementById('kpiSummary');
-  const kpiArchivosEl = document.getElementById('kpiArchivos');
-  const kpiFilasEl = document.getElementById('kpiFilas');
+  const kpiPatientsEl = document.getElementById('kpiPatients');
+  const kpiConsultasEl = document.getElementById('kpiConsultas');
+  const kpiSpecialtiesEl = document.getElementById('kpiSpecialties');
+  const kpiSuppliesEl = document.getElementById('kpiSupplies');
 
   const summaryArchivosEl = document.getElementById('summaryArchivos');
   const summaryRegistrosEl = document.getElementById('summaryRegistros');
@@ -190,7 +192,7 @@
     btnStop.style.display = running ? '' : 'none';
     btnStart.disabled = running;
     if (!running) {
-      btnStart.disabled = !(uploadedFilename && mappingStatusEl.classList.contains('ok'));
+      updateStartButton();
     }
     if (!running && progressActionsEl) {
       // Mostrar botón de descarga si hubo errores
@@ -263,13 +265,32 @@
   function updateStartButton() {
     const hasMapping = mappingStatusEl.classList.contains('ok');
     const hasFile = !!uploadedFilename;
+    const estado = (document.getElementById('inputEstadoBrigada') || {}).value || '';
+    const lugar  = (inputLugar ? inputLugar.value : '').trim();
     const lat = (inputLatitud && inputLatitud.value || '').trim();
     const lon = (inputLongitud && inputLongitud.value || '').trim();
-    const hasCoords = !!(lat && lon);
-    const coordsMissing = coordsRequired && !hasCoords;
-    btnStart.disabled = !hasFile || !hasMapping || coordsMissing;
-    if (coordsMissing) {
-      setCoordsHint('Coordenadas obligatorias: ingresa Latitud y Longitud antes de iniciar.', 'error');
+    const allLocationFilled = !!(estado.trim() && lugar && lat && lon);
+    btnStart.disabled = !hasFile || !hasMapping || !allLocationFilled;
+
+    var reasons = [];
+    if (!hasFile) reasons.push('No se ha cargado un archivo Excel');
+    if (!hasMapping) reasons.push('El mapeo de columnas no está configurado');
+    if (!estado.trim()) reasons.push('Falta: Estado de la brigada');
+    if (!lugar) reasons.push('Falta: Lugar (colegio/comunidad)');
+    if (!lat) reasons.push('Falta: Latitud');
+    if (!lon) reasons.push('Falta: Longitud');
+
+    var wrapper = document.getElementById('btnStartWrapper');
+    if (reasons.length > 0) {
+      var tooltipText = 'No se puede iniciar:\n• ' + reasons.join('\n• ');
+      if (wrapper) wrapper.setAttribute('data-tooltip', tooltipText);
+      var locationMissing = reasons.filter(function(r) { return r.startsWith('Falta:'); });
+      if (locationMissing.length > 0) {
+        setCoordsHint('Completa: ' + locationMissing.map(function(r) { return r.replace('Falta: ', ''); }).join(', ') + ' antes de iniciar la carga.', 'error');
+      }
+    } else {
+      if (wrapper) wrapper.setAttribute('data-tooltip', 'Todo listo. Haz clic para iniciar el llenado automático.');
+      setCoordsHint('Datos de ubicación completos. Puedes iniciar la carga.', 'info');
     }
   }
 
@@ -326,6 +347,28 @@
   }
   if (inputLatitud) inputLatitud.addEventListener('input', onCoordsInput);
   if (inputLongitud) inputLongitud.addEventListener('input', onCoordsInput);
+  var _inputEstBrig = document.getElementById('inputEstadoBrigada');
+  if (_inputEstBrig) _inputEstBrig.addEventListener('input', function() { updateStartButton(); });
+  if (inputLugar) inputLugar.addEventListener('input', function() { updateStartButton(); });
+
+  var btnStartWrapper = document.getElementById('btnStartWrapper');
+  if (btnStartWrapper) {
+    btnStartWrapper.addEventListener('click', function(e) {
+      if (!btnStart.disabled) return;
+      var tooltip = btnStartWrapper.getAttribute('data-tooltip') || '';
+      if (tooltip) {
+        alert(tooltip.replace(/\n/g, '\n'));
+        var firstMissing = document.getElementById('inputEstadoBrigada');
+        if (firstMissing && !firstMissing.value.trim()) { firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' }); firstMissing.focus(); return; }
+        firstMissing = document.getElementById('inputLugar');
+        if (firstMissing && !firstMissing.value.trim()) { firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' }); firstMissing.focus(); return; }
+        firstMissing = document.getElementById('inputLatitud');
+        if (firstMissing && !firstMissing.value) { firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' }); firstMissing.focus(); return; }
+        firstMissing = document.getElementById('inputLongitud');
+        if (firstMissing && !firstMissing.value) { firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' }); firstMissing.focus(); return; }
+      }
+    });
+  }
 
   // ── Tabla de verificación ───────────────────────────────────────────────────
 
@@ -382,23 +425,21 @@
         var v = data.validation || {};
         if (v.valid != null) msg += ' ' + v.valid + ' completos.';
         addLog(msg + ' Listo para iniciar.', 'info');
+        // Limpiar campos de ubicación para aplicar los del nuevo archivo
+        var inpEstado = document.getElementById('inputEstadoBrigada');
+        var inpLugar = document.getElementById('inputLugar');
+        var inpLat = document.getElementById('inputLatitud');
+        var inpLon = document.getElementById('inputLongitud');
+        if (inpEstado) inpEstado.value = '';
+        if (inpLugar) inpLugar.value = '';
+        if (inpLat) inpLat.value = '';
+        if (inpLon) inpLon.value = '';
+
         if (data.defaults) {
-          if (data.defaults.Estado_brigada) {
-            var inpEstado = document.getElementById('inputEstadoBrigada');
-            if (inpEstado && !inpEstado.value) inpEstado.value = data.defaults.Estado_brigada;
-          }
-          if (data.defaults.Lugar) {
-            var inpLugar = document.getElementById('inputLugar');
-            if (inpLugar && !inpLugar.value) inpLugar.value = data.defaults.Lugar;
-          }
-          if (data.defaults.Latitud) {
-            var inpLat = document.getElementById('inputLatitud');
-            if (inpLat && !inpLat.value) inpLat.value = data.defaults.Latitud;
-          }
-          if (data.defaults.Longitud) {
-            var inpLon = document.getElementById('inputLongitud');
-            if (inpLon && !inpLon.value) inpLon.value = data.defaults.Longitud;
-          }
+          if (data.defaults.Estado_brigada && inpEstado) inpEstado.value = data.defaults.Estado_brigada;
+          if (data.defaults.Lugar && inpLugar) inpLugar.value = data.defaults.Lugar;
+          if (data.defaults.Latitud && inpLat) inpLat.value = data.defaults.Latitud;
+          if (data.defaults.Longitud && inpLon) inpLon.value = data.defaults.Longitud;
         }
         // Actualizar estado de coordenadas requeridas
         coordsRequired = !!data.coords_required;
@@ -408,8 +449,10 @@
           var lugarLabel = data.coords_from_store;
           setCoordsHint('Coordenadas aplicadas para "' + lugarLabel + '".', 'info');
           addLog('Coordenadas aplicadas para ' + lugarLabel, 'info');
-        } else if ((inputLatitud && inputLatitud.value) || (inputLongitud && inputLongitud.value)) {
+        } else if ((inpLat && inpLat.value) || (inpLon && inpLon.value)) {
           setCoordsHint('Coordenadas listas para usar.', 'info');
+        } else if (!data.defaults || (!data.defaults.Lugar && !data.defaults.Estado_brigada)) {
+          setCoordsHint('No se detectó lugar de atención conocido. Ingresa Estado, Lugar y Coordenadas manualmente si es necesario.', 'info');
         } else if (coordsRequired) {
           setCoordsHint('Coordenadas obligatorias: el lugar no fue reconocido. Ingresa Latitud y Longitud para continuar.', 'error');
         } else {
@@ -783,6 +826,29 @@
 
   btnStart.addEventListener('click', function () {
     if (btnStart.disabled) return;
+
+    var _estado = (document.getElementById('inputEstadoBrigada') || {}).value || '';
+    var _lugar  = (document.getElementById('inputLugar') || {}).value || '';
+    var _lat    = (document.getElementById('inputLatitud') || {}).value || '';
+    var _lon    = (document.getElementById('inputLongitud') || {}).value || '';
+    var camposFaltantes = [];
+    if (!_estado.trim()) camposFaltantes.push('Estado de la brigada');
+    if (!_lugar.trim())  camposFaltantes.push('Lugar (colegio/comunidad)');
+    if (!_lat.trim())    camposFaltantes.push('Latitud');
+    if (!_lon.trim())    camposFaltantes.push('Longitud');
+    if (camposFaltantes.length > 0) {
+      var msg = 'Faltan datos en "03 INICIAR CARGA":\n• ' + camposFaltantes.join('\n• ') +
+                '\n\nLlena estos campos antes de iniciar la carga.';
+      alert(msg);
+      addLog('No se puede iniciar: faltan campos obligatorios (' + camposFaltantes.join(', ') + ').', 'error');
+      var primerCampo = !_estado.trim() ? document.getElementById('inputEstadoBrigada') :
+                        !_lugar.trim()  ? document.getElementById('inputLugar') :
+                        !_lat.trim()    ? document.getElementById('inputLatitud') :
+                                          document.getElementById('inputLongitud');
+      if (primerCampo) { primerCampo.scrollIntoView({ behavior: 'smooth', block: 'center' }); primerCampo.focus(); }
+      return;
+    }
+
     var selectedIndices = getSelectedRowIndices();
     var hasTableRows = dataTableEl && dataTableEl.querySelectorAll('tbody tr').length > 0;
     if (hasTableRows && selectedIndices.length === 0) {
@@ -869,8 +935,8 @@
           loadHistorial();
           loadExcelForVerification();
           if (data.event === 'done' && activeKoboupFileId) {
-            markKoboupDone(activeKoboupFileId);
             activeKoboupFileId = null;
+            loadKoboupQueue();
           }
         }
       } catch (err) {
@@ -1408,18 +1474,40 @@
     updateSummaryStats(archivosSet.size, totalRegistros);
   }
 
-  function updateKpis(entries) {
-    if (!kpiSummaryEl || !kpiArchivosEl || !kpiFilasEl) return;
-    const archivosExitosos = new Set();
-    let filasExitosas = 0;
-    (entries || []).forEach(function (e) {
-      var exitosos = Number(e.exitosos) || 0;
-      var nombreArchivo = (e.archivo_original || e.archivo || '').trim();
-      if (exitosos > 0 && nombreArchivo) archivosExitosos.add(nombreArchivo);
-      filasExitosas += exitosos;
-    });
-    kpiArchivosEl.textContent = archivosExitosos.size;
-    kpiFilasEl.textContent = filasExitosas;
+  function renderKpiMetricCards(container, title, items, emptyText) {
+    if (!container) return;
+    if (!items || items.length === 0) {
+      container.innerHTML = '<div class="kpi-card"><div class="kpi-label">' + escapeHtml(title) + '</div><div class="kpi-sub">' + escapeHtml(emptyText || 'Sin datos') + '</div></div>';
+      return;
+    }
+    var html = items.map(function (item) {
+      return '<div class="kpi-card">'
+        + '<div class="kpi-label">' + escapeHtml(item.label || '') + '</div>'
+        + '<div class="kpi-value">' + (item.count != null ? item.count : 0) + '</div>'
+        + '<div class="kpi-sub">' + escapeHtml(title) + '</div>'
+        + '</div>';
+    }).join('');
+    container.innerHTML = html;
+  }
+
+  function loadKpis() {
+    if (!kpiSummaryEl || !kpiPatientsEl || !kpiConsultasEl) return;
+    fetch('/api/kpis')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok || !data.kpis) return;
+        var k = data.kpis;
+        kpiPatientsEl.textContent = k.patients_registered || 0;
+        kpiConsultasEl.textContent = k.total_consultations || 0;
+        renderKpiMetricCards(kpiSpecialtiesEl, 'Consultas', k.specialties || [], 'Sin consultas registradas');
+        renderKpiMetricCards(kpiSuppliesEl, 'Insumos entregados', k.supplies || [], 'Sin insumos registrados');
+      })
+      .catch(function () {
+        if (kpiPatientsEl) kpiPatientsEl.textContent = '0';
+        if (kpiConsultasEl) kpiConsultasEl.textContent = '0';
+        if (kpiSpecialtiesEl) kpiSpecialtiesEl.innerHTML = '';
+        if (kpiSuppliesEl) kpiSuppliesEl.innerHTML = '';
+      });
   }
 
   function loadHistorial() {
@@ -1428,7 +1516,7 @@
       .then(function (data) {
         var entries = data.entries || [];
         var archivosExitosos = data.archivos_exitosos || [];
-        updateKpis(entries);
+        loadKpis();
         updateSummaryFromEntries(entries);
         renderHistorialArchivos(archivosExitosos);
         renderHistorial(entries);
@@ -1682,8 +1770,17 @@
     function showTooltip(target) {
       var text = target.getAttribute('data-tooltip');
       if (!text) return;
-      bubble.textContent = text;
-      bubble.classList.remove('visible', 'tooltip-above');
+      if (text.indexOf('\n') !== -1) {
+        bubble.innerHTML = '';
+        text.split('\n').forEach(function(line, i) {
+          if (i > 0) bubble.appendChild(document.createElement('br'));
+          bubble.appendChild(document.createTextNode(line));
+        });
+      } else {
+        bubble.textContent = text;
+      }
+      bubble.classList.remove('visible', 'tooltip-above', 'tooltip-warning');
+      if (target.disabled) bubble.classList.add('tooltip-warning');
       bubble.style.top = '-9999px';
       bubble.style.left = '-9999px';
       bubble.style.display = 'block';
@@ -2114,24 +2211,38 @@
       var f = koboupFiles[i];
       var isActive = activeKoboupFileId && String(f.id) === String(activeKoboupFileId);
       var isDone = f.local_status === 'completed';
+      var isPartial = f.local_status === 'partial';
       var rowClass = 'kq-row';
       if (isActive) rowClass += ' kq-active';
       if (isDone) rowClass += ' kq-done';
 
-      var statusLabel = isDone ? '<span class="kq-badge kq-badge-done">Cargado</span>'
+      var statusLabel = isDone ? '<span class="kq-badge kq-badge-done">Completado</span>'
+        : isPartial ? '<span class="kq-badge kq-badge-active">Parcial</span>'
         : isActive ? '<span class="kq-badge kq-badge-active">En proceso</span>'
         : '<span class="kq-badge kq-badge-pending">Pendiente</span>';
 
       var actionBtn = isDone
         ? '<button class="btn btn-small btn-secondary kq-btn" disabled>Completado</button>'
         : isActive
-        ? '<button class="btn btn-small btn-secondary kq-btn" disabled>Cargado</button>'
-        : '<button class="btn btn-small btn-primary kq-btn" data-kq-idx="' + i + '">Cargar</button>';
+        ? '<button class="btn btn-small btn-secondary kq-btn" disabled>En proceso</button>'
+        : '<button class="btn btn-small btn-primary kq-btn" data-kq-idx="' + i + '">' + (isPartial ? 'Continuar' : 'Cargar') + '</button>';
+
+      var sentCount = f.sent_count || 0;
+      var totalRows = f.row_count || 0;
+      var sentComplete = totalRows > 0 && sentCount >= totalRows;
+      var sentPartial = sentCount > 0 && !sentComplete;
+      var sentClass = sentComplete ? 'kq-sent-complete' : sentPartial ? 'kq-sent-partial' : 'kq-sent-zero';
+      var sentLabel = '<span class="kq-sent ' + sentClass + '">' + sentCount + '/' + totalRows + '</span>';
+      var statusSource = f.status_source || '';
+      var statusDetail = statusSource
+        ? '<div class="kq-status-detail" title="' + statusSource.replace(/"/g, '&quot;') + '">' + statusSource + '</div>'
+        : '';
 
       html += '<div class="' + rowClass + '">'
         + '<span class="kq-col-num">' + (i + 1) + '</span>'
         + '<span class="kq-col-name" title="' + (f.original_name || '').replace(/"/g, '&quot;') + '">' + (f.original_name || 'Sin nombre') + '</span>'
-        + '<span class="kq-col-status">' + statusLabel + '</span>'
+        + '<span class="kq-col-sent">' + sentLabel + '</span>'
+        + '<span class="kq-col-status">' + statusLabel + statusDetail + '</span>'
         + '<span class="kq-col-action">' + actionBtn + '</span>'
         + '</div>';
     }
@@ -2182,29 +2293,6 @@
         addLog('Error: ' + e.message, 'error');
         if (btn) { btn.disabled = false; btn.textContent = 'Cargar'; }
       });
-  }
-
-  function markKoboupDone(fileId) {
-    if (!fileId) return;
-    fetch('/api/koboup/mark-done', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file_id: String(fileId) }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function () {
-        for (var i = 0; i < koboupFiles.length; i++) {
-          if (String(koboupFiles[i].id) === String(fileId)) {
-            koboupFiles[i].local_status = 'completed';
-          }
-        }
-        renderKoboupList();
-        if (koboupStatus) {
-          var pending = koboupFiles.filter(function (f) { return f.local_status !== 'completed'; }).length;
-          koboupStatus.textContent = pending + ' pendiente(s) / ' + koboupFiles.length + ' total';
-        }
-      })
-      .catch(function () {});
   }
 
   if (btnLoadKoboup) {
@@ -2282,10 +2370,6 @@
       checkboxes[j].checked = !!indexSet[idx];
     }
   }
-
-  // ── Hook SSE done event to mark KoboUp file as completed ──────────────────
-
-  var _origHandleSSEMessage = typeof handleSSEMessage === 'function' ? handleSSEMessage : null;
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 
