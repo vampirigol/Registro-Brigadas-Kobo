@@ -1679,6 +1679,157 @@
     return n;
   }
 
+  function rowValueByAliases(row, columns, aliases) {
+    if (!row || !columns || !aliases || !aliases.length) return '';
+    var wanted = aliases.map(normColName).filter(Boolean);
+    for (var i = 0; i < columns.length; i += 1) {
+      var c = String(columns[i] || '');
+      if (!c) continue;
+      if (wanted.indexOf(normColName(c)) >= 0) {
+        return String(row[c] == null ? '' : row[c]);
+      }
+    }
+    return '';
+  }
+
+  function colIsAny(colName, aliases) {
+    if (!aliases || !aliases.length) return false;
+    var n = normColName(colName);
+    for (var i = 0; i < aliases.length; i += 1) {
+      if (n === normColName(aliases[i])) return true;
+    }
+    return false;
+  }
+
+  function yesLike(v) {
+    var n = normColName(v);
+    return n === 'si' || n === 'sí' || n === 'yes' || n === '1' || n === 'true';
+  }
+
+  function femaleLike(v) {
+    var n = normColName(v);
+    return n === 'femenino' || n === 'f' || n === 'female' || n === 'mujer' || n === '2';
+  }
+
+  function meMlEmbarazo(v) {
+    var n = normColName(v);
+    return n === 'embarazada' || n === 'embarazo' || n === '1';
+  }
+
+  function meMlLactancia(v) {
+    var n = normColName(v);
+    return n === 'lactancia' || n === '2 1' || n === '2_1';
+  }
+
+  function shouldEnableCellByKoboRules(row, columns, colName) {
+    var service = normalizeServiceName(rowValueByAliases(row, columns, [
+      'Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda'
+    ]));
+    var sexVal = rowValueByAliases(row, columns, ['Sexo', 'SEX']);
+    var refVal = rowValueByAliases(row, columns, ['Se hizo referencia', '¿Se hizo referencia?', 'Referencia', 'REF']);
+    var meMlVal = rowValueByAliases(row, columns, ['¿Embarazada / Lactancia?', 'ME_ML', 'Embarazada / Lactancia']);
+    var ageVal = rowValueByAliases(row, columns, ['Edad', 'AGE']);
+    var ageNum = Number(String(ageVal || '').replace(',', '.'));
+    var hasRef = yesLike(refVal);
+    var isFemale = femaleLike(sexVal);
+    var isPregnant = meMlEmbarazo(meMlVal);
+    var isLactating = meMlLactancia(meMlVal);
+
+    var medGeneralCols = [
+      'Discapacidad',
+      'Especificar discapacidad',
+      'Diagnóstico Medicina General',
+      'Diagnostico Medicina General',
+      'Diagnóstico Med',
+      'Diagnóstico Med?',
+      'Padecimiento médico actual'
+    ];
+    var dentalCols = [
+      'Diagnóstico Odontología',
+      'Diagnostico Odontologia',
+      'Diagnóstico Odo',
+      'Diagnóstico Odo?',
+      '¿Se realiza procedimiento odontológico?',
+      'Se realiza procedimiento odontológico?',
+      'Qué procedimiento se realiza',
+      'Que procedimiento se realiza'
+    ];
+    var fisioCols = [
+      'Fisioterapia',
+      'Diagnóstico Fisio',
+      'Diagnostico Fisio',
+      'Diagnóstico Fisioterapia',
+      'Diagnostico Fisioterapia',
+      'Plan de Tratamiento'
+    ];
+    var oftalmoCols = [
+      'Síntomas que presenta a la fecha de consulta',
+      'Sintomas que presenta a la fecha de consulta',
+      '¿Ha recibido algún diagnóstico previo?',
+      'Ha recibido algun diagnostico previo',
+      'Diagnóstico Actual',
+      'Diagnostico Actual',
+      'Requiere anteojos'
+    ];
+    var laboratorioCols = [
+      'Laboratorio Clínico',
+      'Laboratorio Clinico',
+      'Diagnóstico / Resu',
+      'Diagnostico / Resu',
+      'Diagnóstico/Resu',
+      'Diagnostico/Resu'
+    ];
+    var referenciaCols = [
+      '¿A dónde?', 'A dónde', 'A donde',
+      'Especificar referencia',
+      'Motivo Ref', 'Motivo Referido', 'Motivo referencia'
+    ];
+
+    // Condicionales por especialidad
+    if (colIsAny(colName, medGeneralCols)) return service === 'medicina general';
+    if (colIsAny(colName, dentalCols)) return service === 'dental';
+    if (colIsAny(colName, fisioCols)) return service === 'fisioterapia';
+    if (colIsAny(colName, oftalmoCols)) return service === 'oftalmologia';
+    if (colIsAny(colName, laboratorioCols)) return service === 'laboratorios';
+
+    // Referencias (no aplica para fisioterapia y depende de "Se hizo referencia")
+    if (colIsAny(colName, ['Se hizo referencia', '¿Se hizo referencia?', 'Referencia'])) {
+      return service !== 'fisioterapia';
+    }
+    if (colIsAny(colName, referenciaCols)) {
+      return service !== 'fisioterapia' && hasRef;
+    }
+
+    // Embarazo / lactancia y suplementos
+    if (colIsAny(colName, ['¿Embarazada / Lactancia?', 'ME_ML', 'Embarazada / Lactancia'])) {
+      return isFemale;
+    }
+    if (colIsAny(colName, ['Suplemento hierro', 'FE'])) {
+      return isPregnant || isLactating;
+    }
+    if (colIsAny(colName, ['Suplemento ácido fólico', 'Suplemento acido folico', 'FA'])) {
+      return isPregnant;
+    }
+
+    // Acompañante en menores
+    if (colIsAny(colName, ['Acompañante', 'Acompanante', 'CGR'])) {
+      if (isNaN(ageNum)) return true;
+      return ageNum < 18;
+    }
+
+    return true;
+  }
+
+  function isRuleTriggerColumn(colName) {
+    return colIsAny(colName, [
+      'Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda',
+      'Sexo', 'SEX',
+      'Se hizo referencia', '¿Se hizo referencia?', 'Referencia', 'REF',
+      '¿Embarazada / Lactancia?', 'ME_ML', 'Embarazada / Lactancia',
+      'Edad', 'AGE'
+    ]);
+  }
+
   function buildSimpleCheck(columns, rows, schema, aliasToLabel) {
     var requiredLabels = (schema || []).filter(function (x) { return !!x.required; }).map(function (x) { return x.label; });
     var matched = {};
@@ -2165,17 +2316,13 @@
         var cname = cols[cj];
         var cw = sheetState.colWidths && sheetState.colWidths[String(cj)] ? sheetState.colWidths[String(cj)] : 135;
         var cell = (rows[ri] && (rows[ri][cname] != null) ? String(rows[ri][cname]) : '');
-        var disabledWhere = false;
-        if (whereColName && refColName && cname === whereColName) {
-          var refVal = normColName(rows[ri] && rows[ri][refColName] || '');
-          disabledWhere = !(refVal === 'si' || refVal === 'sí');
-          if (disabledWhere && cell) {
-            rows[ri][cname] = '';
-            cell = '';
-          }
+        var disabledByRule = !shouldEnableCellByKoboRules(rows[ri] || {}, cols, cname);
+        if (disabledByRule && cell) {
+          rows[ri][cname] = '';
+          cell = '';
         }
-        var disAttr = disabledWhere ? ' disabled aria-disabled="true"' : '';
-        var disCls = disabledWhere ? ' sheet-cell-disabled' : '';
+        var disAttr = disabledByRule ? ' disabled aria-disabled="true"' : '';
+        var disCls = disabledByRule ? ' sheet-cell-disabled' : '';
         h += '<td style="width:' + cw + 'px;min-width:' + cw + 'px;max-width:' + cw + 'px;"><input class="sheet-cell' + disCls + '" type="text" data-r="' + ri + '" data-ci="' + cj + '" value="' + escAttr(cell) + '" spellcheck="false"' + disAttr + ' /></td>';
       }
       h += '<td class="sheet-dummy" aria-hidden="true"></td></tr>';
@@ -2597,16 +2744,7 @@
           cname,
           el.value
         );
-        // Regla condicional: si "Se hizo referencia?" != Sí, limpiar "A dónde?".
-        var refCol = _pickColumnByAliases(sheetState.columns, ['Se hizo referencia', '¿Se hizo referencia?', 'Referencia']);
-        var whereCol = _pickColumnByAliases(sheetState.columns, ['A dónde', 'A donde', '¿A dónde?', 'Referencia_donde']);
-        if (refCol && whereCol && cname === refCol) {
-          var refNorm = normColName(el.value);
-          if (!(refNorm === 'si' || refNorm === 'sí')) {
-            sheetState.rows[ri][whereCol] = '';
-          }
-          renderSheetTable();
-        } else if (changedBySplit) {
+        if (isRuleTriggerColumn(cname) || changedBySplit) {
           renderSheetTable();
         }
         sheetDirty = true;
