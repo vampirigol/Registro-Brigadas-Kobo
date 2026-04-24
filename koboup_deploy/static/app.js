@@ -1,10 +1,35 @@
 (function () {
+  /* Prefijo para API bajo /koboup/ (p. ej. /koboup sin barra final hacía fallar api/files → /api/files) */
+  var kobuPathPrefix = (function () {
+    var p = location.pathname;
+    if (p.endsWith('/')) return p;
+    var i = p.lastIndexOf('/');
+    if (i <= 0) return p + '/';
+    var last = p.substring(i + 1);
+    if (last.indexOf('.') > 0) {
+      return p.substring(0, i + 1);
+    }
+    return p + '/';
+  }());
+  function u(rel) {
+    if (rel == null) rel = '';
+    rel = String(rel).replace(/^\/+/, '');
+    if (!kobuPathPrefix.endsWith('/')) {
+      return kobuPathPrefix + '/' + rel;
+    }
+    return kobuPathPrefix + rel;
+  }
+  if (typeof window !== 'undefined') {
+    window.kobuUrl = u;
+  }
+
   /* ═══════════════ ELEMENTOS DOM ═══════════════ */
 
   // Secciones principales
   var sectionWork = document.getElementById('sectionWork');
   var sectionRefs = document.getElementById('sectionRefs');
   var sectionRanking = document.getElementById('sectionRanking');
+  var sectionAudit = document.getElementById('sectionAudit');
   var navBtns = document.querySelectorAll('.main-nav-btn');
 
   // Archivos de trabajo
@@ -62,6 +87,72 @@
   var dlModalConfirm = document.getElementById('dlModalConfirm');
   var pendingDownload = null;
 
+  // Modal editar archivo
+  var editModalOverlay = document.getElementById('editModalOverlay');
+  var editModalFilename = document.getElementById('editModalFilename');
+  var editModalOriginalName = document.getElementById('editModalOriginalName');
+  var editModalUploadedBy = document.getElementById('editModalUploadedBy');
+  var editModalNotes = document.getElementById('editModalNotes');
+  var editModalMsg = document.getElementById('editModalMsg');
+  var editModalCancel = document.getElementById('editModalCancel');
+  var editModalConfirm = document.getElementById('editModalConfirm');
+  var pendingEditFile = null;
+
+  // Editor de hoja (tabla)
+  var sheetOverlay = document.getElementById('sheetEditorOverlay');
+  var sheetTitle = document.getElementById('sheetEditorTitle');
+  var sheetHint = document.getElementById('sheetEditorHint');
+  var sheetStatus = document.getElementById('sheetEditorStatus');
+  var sheetTableScroll = document.getElementById('sheetTableScroll');
+  var sheetTableWrap = document.getElementById('sheetTableWrap');
+  var sheetColumnsCheck = document.getElementById('sheetColumnsCheck');
+  var sheetOriginalName = document.getElementById('sheetOriginalName');
+  var sheetUploadedBy = document.getElementById('sheetUploadedBy');
+  var sheetNotes = document.getElementById('sheetNotes');
+  var sheetAddRow = document.getElementById('sheetAddRow');
+  var sheetAddCol = document.getElementById('sheetAddCol');
+  var sheetColRemove = document.getElementById('sheetColRemove');
+  var sheetColRemoveGo = document.getElementById('sheetColRemoveGo');
+  var sheetApplySuggestions = document.getElementById('sheetApplySuggestions');
+  var sheetOpenGuide = document.getElementById('sheetOpenGuide');
+  var sheetSubmitKobo = document.getElementById('sheetSubmitKobo');
+  var sheetMarkEditedValidated = document.getElementById('sheetMarkEditedValidated');
+  var sheetSave = document.getElementById('sheetSave');
+  var sheetClose = document.getElementById('sheetClose');
+  var sheetOpenMetaOnly = document.getElementById('sheetOpenMetaOnly');
+  var sheetState = null; /* { file, columns, rows } */
+  var sheetDirty = false;
+  var sheetSelection = null; /* {r1,c1,r2,c2} */
+  var sheetSelecting = false;
+  var sheetLockHeartbeat = null;
+  var sheetUnlockSent = false;
+  var sheetContextMenuEl = null;
+  var sheetContextTarget = null; /* {ci:number|null, ri:number|null} */
+  var koboSubmitModalOverlay = document.getElementById('koboSubmitModalOverlay');
+  var koboSubmitModalFilename = document.getElementById('koboSubmitModalFilename');
+  var koboSubmitRows = document.getElementById('koboSubmitRows');
+  var koboSubmitSelectAll = document.getElementById('koboSubmitSelectAll');
+  var koboSubmitPassword = document.getElementById('koboSubmitPassword');
+  var koboSubmitMsg = document.getElementById('koboSubmitMsg');
+  var koboSubmitCancel = document.getElementById('koboSubmitCancel');
+  var koboSubmitConfirm = document.getElementById('koboSubmitConfirm');
+  var koboSubmitBusy = false;
+  var SHEET_GUIDE_SEEN_KEY = 'koboup_sheet_guide_v1_seen_v1';
+  var sheetGuide = {
+    active: false,
+    stepIndex: 0,
+    steps: [],
+    targetEl: null,
+    overlay: null,
+    card: null,
+    titleEl: null,
+    textEl: null,
+    counterEl: null,
+    prevBtn: null,
+    nextBtn: null,
+    closeBtn: null
+  };
+
   // Referencias PDF
   var refFileInput = document.getElementById('refFileInput');
   var refUploadZone = document.getElementById('refUploadZone');
@@ -85,6 +176,8 @@
   var currentRefLocation = '';
   var filesCache = [];
   var refsCache = [];
+  var koboLogsTableBody = document.getElementById('koboLogsTableBody');
+  var btnKoboLogsRefresh = document.getElementById('btnKoboLogsRefresh');
 
   var savedName = localStorage.getItem('koboup_name') || '';
   if (savedName && inputName) inputName.value = savedName;
@@ -102,6 +195,173 @@
     var d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+  }
+
+  function escAttr(s) {
+    s = s == null ? '' : String(s);
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+  }
+
+  function ensureSheetGuideUI() {
+    if (sheetGuide.overlay && sheetGuide.card) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'sheet-tour-overlay';
+    overlay.id = 'sheetTourOverlay';
+
+    var card = document.createElement('div');
+    card.className = 'sheet-tour-card';
+    card.id = 'sheetTourCard';
+    card.innerHTML = ''
+      + '<div class="sheet-tour-title" id="sheetTourTitle"></div>'
+      + '<div class="sheet-tour-text" id="sheetTourText"></div>'
+      + '<div class="sheet-tour-foot">'
+      + '  <span class="sheet-tour-counter" id="sheetTourCounter"></span>'
+      + '  <div class="sheet-tour-actions">'
+      + '    <button type="button" class="btn btn-ghost" id="sheetTourPrev">Anterior</button>'
+      + '    <button type="button" class="btn btn-outline" id="sheetTourClose">Cerrar guía</button>'
+      + '    <button type="button" class="btn btn-primary" id="sheetTourNext">Siguiente</button>'
+      + '  </div>'
+      + '</div>';
+    document.body.appendChild(overlay);
+    document.body.appendChild(card);
+
+    sheetGuide.overlay = overlay;
+    sheetGuide.card = card;
+    sheetGuide.titleEl = card.querySelector('#sheetTourTitle');
+    sheetGuide.textEl = card.querySelector('#sheetTourText');
+    sheetGuide.counterEl = card.querySelector('#sheetTourCounter');
+    sheetGuide.prevBtn = card.querySelector('#sheetTourPrev');
+    sheetGuide.nextBtn = card.querySelector('#sheetTourNext');
+    sheetGuide.closeBtn = card.querySelector('#sheetTourClose');
+
+    overlay.addEventListener('click', function () { stopSheetGuide(true); });
+    if (sheetGuide.prevBtn) {
+      sheetGuide.prevBtn.addEventListener('click', function () {
+        if (!sheetGuide.active) return;
+        if (sheetGuide.stepIndex <= 0) return;
+        sheetGuide.stepIndex -= 1;
+        renderSheetGuideStep();
+      });
+    }
+    if (sheetGuide.nextBtn) {
+      sheetGuide.nextBtn.addEventListener('click', function () {
+        if (!sheetGuide.active) return;
+        if (sheetGuide.stepIndex >= sheetGuide.steps.length - 1) {
+          stopSheetGuide(true);
+          return;
+        }
+        sheetGuide.stepIndex += 1;
+        renderSheetGuideStep();
+      });
+    }
+    if (sheetGuide.closeBtn) {
+      sheetGuide.closeBtn.addEventListener('click', function () { stopSheetGuide(true); });
+    }
+  }
+
+  function clearSheetGuideFocus() {
+    if (sheetGuide.targetEl && sheetGuide.targetEl.classList) {
+      sheetGuide.targetEl.classList.remove('sheet-tour-focus');
+    }
+    sheetGuide.targetEl = null;
+  }
+
+  function buildSheetGuideSteps() {
+    var out = [
+      {
+        title: 'Paso 1: Revisa qué falta',
+        text: 'Este panel te dice en lenguaje simple si el archivo está listo o qué debes corregir antes de guardar.',
+        target: function () { return sheetColumnsCheck; }
+      },
+      {
+        title: 'Paso 2: Corrige la tabla',
+        text: 'Edita aquí celdas, filas y columnas. Puedes pegar datos como en Excel y ajustar encabezados.',
+        target: function () { return sheetTableWrap; }
+      },
+      {
+        title: 'Paso 3: Verifica nombre y nota',
+        text: 'Antes de guardar, confirma el nombre visible del archivo y agrega nota si hace falta.',
+        target: function () { return sheetOriginalName; }
+      },
+      {
+        title: 'Paso 4: Guarda los cambios',
+        text: 'Cuando termines, pulsa "Guardar todo". Esto actualiza el archivo en el servidor y en la base de datos.',
+        target: function () { return sheetSave; }
+      }
+    ];
+    if (sheetMarkEditedValidated) {
+      out.push({
+        title: 'Paso 5 (Opcional): Marca validación final',
+        text: 'Si ya revisaste todo, usa "Marcar Editado Validado" para dejar claro que el archivo quedó listo.',
+        target: function () { return sheetMarkEditedValidated; }
+      });
+    }
+    return out.filter(function (step) {
+      try { return !!(step.target && step.target()); } catch (e) { return false; }
+    });
+  }
+
+  function renderSheetGuideStep() {
+    if (!sheetGuide.active) return;
+    if (!sheetGuide.steps || !sheetGuide.steps.length) return;
+    var idx = Math.max(0, Math.min(sheetGuide.stepIndex, sheetGuide.steps.length - 1));
+    sheetGuide.stepIndex = idx;
+    var step = sheetGuide.steps[idx];
+    var target = null;
+    try { target = step.target ? step.target() : null; } catch (e) { target = null; }
+
+    clearSheetGuideFocus();
+    if (target && target.classList) {
+      sheetGuide.targetEl = target;
+      target.classList.add('sheet-tour-focus');
+      if (typeof target.scrollIntoView === 'function') {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }
+    }
+
+    if (sheetGuide.titleEl) sheetGuide.titleEl.textContent = step.title || '';
+    if (sheetGuide.textEl) sheetGuide.textEl.textContent = step.text || '';
+    if (sheetGuide.counterEl) sheetGuide.counterEl.textContent = 'Paso ' + (idx + 1) + ' de ' + sheetGuide.steps.length;
+    if (sheetGuide.prevBtn) sheetGuide.prevBtn.disabled = idx <= 0;
+    if (sheetGuide.nextBtn) sheetGuide.nextBtn.textContent = (idx >= sheetGuide.steps.length - 1) ? 'Finalizar' : 'Siguiente';
+  }
+
+  function startSheetGuide() {
+    if (!sheetOverlay || sheetOverlay.style.display === 'none') return;
+    ensureSheetGuideUI();
+    sheetGuide.steps = buildSheetGuideSteps();
+    if (!sheetGuide.steps.length) return;
+    sheetGuide.stepIndex = 0;
+    sheetGuide.active = true;
+    if (sheetGuide.overlay) sheetGuide.overlay.style.display = 'block';
+    if (sheetGuide.card) sheetGuide.card.style.display = 'block';
+    renderSheetGuideStep();
+  }
+
+  function stopSheetGuide(markSeen) {
+    if (!sheetGuide.active && !sheetGuide.overlay) return;
+    clearSheetGuideFocus();
+    sheetGuide.active = false;
+    if (sheetGuide.overlay) sheetGuide.overlay.style.display = 'none';
+    if (sheetGuide.card) sheetGuide.card.style.display = 'none';
+    if (markSeen) {
+      try { localStorage.setItem(SHEET_GUIDE_SEEN_KEY, '1'); } catch (e) {}
+    }
+  }
+
+  function isStubXlsName(stored) {
+    var n = (stored || '').toLowerCase();
+    return n.endsWith('.xls') && !n.endsWith('.xlsx');
+  }
+
+  function canOpenSheetEditor(f) {
+    if (!f || f.status !== 'validado' || f.file_type === 'pdf') return false;
+    if (isStubXlsName(f.stored_name)) return false;
+    var n = (f.stored_name || '').toLowerCase();
+    return n.endsWith('.xlsx') || n.endsWith('.csv');
   }
 
   function fmtSize(b) {
@@ -161,12 +421,16 @@
       sectionWork.style.display = 'none';
       sectionRefs.style.display = 'none';
       sectionRanking.style.display = 'none';
+      if (sectionAudit) sectionAudit.style.display = 'none';
       if (section === 'refs') {
         sectionRefs.style.display = '';
         loadRefs();
       } else if (section === 'ranking') {
         sectionRanking.style.display = '';
         loadRanking();
+      } else if (section === 'audit') {
+        if (sectionAudit) sectionAudit.style.display = '';
+        loadKoboSubmissionLogs();
       } else {
         sectionWork.style.display = '';
         loadFiles();
@@ -459,7 +723,7 @@
         workUploadState.files[index].status = 'error'; workUploadState.files[index].errorMsg = 'Cancelado';
         workUploadState.failed++; updateWorkProgress(); reject(new Error('Cancelado'));
       });
-      xhr.open('POST', 'api/files');
+      xhr.open('POST', u('api/files'));
       xhr.send(fd);
     });
   }
@@ -485,7 +749,7 @@
       btnUpload.disabled = true;
       setMsg(uploadMsg, 'Subiendo archivo...', 'info');
       try {
-        var r = await fetch('api/files', { method: 'POST', body: fd });
+        var r = await fetch(u('api/files'), { method: 'POST', body: fd });
         var data = await r.json();
         if (!data.ok) throw new Error(data.error || 'Error al subir');
         var msg = 'Archivo "' + (data.file.original_name || '') + '" subido correctamente como ' + statusLabel(data.file.status) + '.';
@@ -605,7 +869,7 @@
     setMsg(bulkDlMsg, 'Generando ZIP, espera...', 'info');
 
     try {
-      var r = await fetch('api/files/download-validated-zip', {
+      var r = await fetch(u('api/files/download-validated-zip'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pwd }),
@@ -660,7 +924,7 @@
 
   async function loadFiles() {
     try {
-      var r = await fetch('api/files');
+      var r = await fetch(u('api/files'));
       var data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Error');
       filesCache = data.files || [];
@@ -677,7 +941,7 @@
   }
 
   function loadPatientKpi() {
-    fetch('api/stats/records').then(function (r) { return r.json(); }).then(function (data) {
+    fetch(u('api/stats/records')).then(function (r) { return r.json(); }).then(function (data) {
       if (!data.ok) return;
       var total = data.validated_records || 0;
       var files = data.validated_files || 0;
@@ -709,14 +973,27 @@
       var iconClass = isPdf ? 'pdf' : 'excel';
       var iconText = isPdf ? 'PDF' : 'XLS';
       var isSuperseded = f.status === 'reemplazado';
+      var isEditing = !!f.is_editing;
+      var isEditedValidated = !!f.edited_validated;
 
       var actions = [];
       if (isSuperseded) {
         actions.push('<button class="btn btn-outline btn-sm js-delete" data-id="' + f.id + '" title="Eliminar">' +
           '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>');
       } else {
-        actions.push('<button class="btn btn-outline btn-sm js-download" data-id="' + f.id + '" data-url="' + (f.download_url || '') + '" data-name="' + esc(f.original_name || f.stored_name) + '">' +
+        actions.push('<button class="btn btn-outline btn-sm js-download" data-id="' + f.id + '" data-url="' + u(f.download_url || ('api/files/' + f.id + '/download')) + '" data-name="' + esc(f.original_name || f.stored_name) + '">' +
           '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Descargar</button>');
+        if (f.status === 'validado') {
+          var canSheet = canOpenSheetEditor(f);
+          var edLabel = canSheet ? 'Editar tabla' : 'Editar';
+          var edTitle = canSheet ? 'Editar todo el archivo: celdas, filas y columnas' : 'Nota, nombre y responsable del archivo';
+          actions.push('<button class="btn btn-outline-purple btn-sm js-edit" data-id="' + f.id + '" data-sheet="' + (canSheet ? '1' : '0') + '" title="' + escAttr(edTitle) + '">' +
+            '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg> ' + esc(edLabel) + '</button>');
+          if (isEditing) {
+            actions.push('<button class="btn btn-outline-blue btn-sm js-force-unlock" data-id="' + f.id + '" data-name="' + esc(f.original_name || f.stored_name) + '" title="Liberar bloqueo de edición">' +
+              '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1v6"/><path d="M8 5h8"/><rect x="4" y="11" width="16" height="10" rx="2"/></svg> Liberar bloqueo</button>');
+          }
+        }
 
         if (f.status === 'pendiente') {
           actions.push('<button class="btn btn-outline-blue btn-sm js-to-review" data-id="' + f.id + '">Marcar en validación</button>');
@@ -730,11 +1007,20 @@
       }
 
       var meta = '<span class="badge ' + statusBadgeClass(f.status) + '">' + statusLabel(f.status) + '</span>';
+      if (isEditedValidated) {
+        meta += '<span class="sep">·</span><span class="badge badge-edited-validated">Editado validado</span>';
+      }
+      if (isEditing) {
+        meta += '<span class="sep">·</span><span class="badge badge-editing">En edición</span>';
+      }
       if (f.row_count != null && f.row_count > 0) meta += '<span class="sep">·</span><span class="file-row-count">' + fmtNum(f.row_count) + ' registros</span>';
       if (f.size_bytes) meta += '<span class="sep">·</span>' + fmtSize(f.size_bytes);
       meta += '<span class="sep">·</span>' + timeSince(f.created_at);
 
       var people = '';
+      if (isEditing) {
+        people += '<span class="person person-editing"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg> En edición por: <strong>' + esc(f.editing_by || 'Usuario') + '</strong></span>';
+      }
       if (f.uploaded_by) people += '<span class="person"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Subido por: <strong>' + esc(f.uploaded_by) + '</strong></span>';
       if (f.downloaded_by) people += '<span class="person person-download"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Descargado por: <strong>' + esc(f.downloaded_by) + '</strong> (' + timeSince(f.downloaded_at) + ')</span>';
       if (f.validated_by) people += '<span class="person person-valid"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Validado por: <strong>' + esc(f.validated_by) + '</strong> (' + timeSince(f.validated_at) + ')</span>';
@@ -749,7 +1035,7 @@
           '</div>';
       }
 
-      return '<div class="file-row' + (isSuperseded ? ' file-row-superseded' : '') + '" data-id="' + f.id + '">' +
+      return '<div class="file-row' + (isSuperseded ? ' file-row-superseded' : '') + (isEditing ? ' file-row-editing' : '') + (isEditedValidated ? ' file-row-edited-validated' : '') + '" data-id="' + f.id + '">' +
         '<div class="file-icon-wrap ' + iconClass + (isSuperseded ? ' icon-superseded' : '') + '">' + iconText + '</div>' +
         '<div class="file-info">' +
           '<div class="file-name' + (isSuperseded ? ' name-superseded' : '') + '">' + esc(f.original_name || f.stored_name) + '</div>' +
@@ -766,14 +1052,41 @@
   // Acciones archivos de trabajo
   filesList.addEventListener('click', function (ev) {
     var dlBtn = ev.target.closest('.js-download');
+    var eBtn = ev.target.closest('.js-edit');
     var vBtn = ev.target.closest('.js-validate');
     var dBtn = ev.target.closest('.js-delete');
     var rBtn = ev.target.closest('.js-to-review');
+    var fuBtn = ev.target.closest('.js-force-unlock');
     if (dlBtn) openDownloadModal(dlBtn.getAttribute('data-id'), dlBtn.getAttribute('data-url'), dlBtn.getAttribute('data-name'));
+    else if (eBtn) onEditFileClick(eBtn.getAttribute('data-id'), eBtn.getAttribute('data-sheet') === '1');
     else if (vBtn) openValidateModal(vBtn.getAttribute('data-id'), vBtn.getAttribute('data-name'));
     else if (rBtn) changeStatus(rBtn.getAttribute('data-id'), 'por_validar');
+    else if (fuBtn) forceUnlockFile(fuBtn.getAttribute('data-id'), fuBtn.getAttribute('data-name'));
     else if (dBtn) deleteFile(dBtn.getAttribute('data-id'));
   });
+
+  async function forceUnlockFile(id, name) {
+    var editorName = getCurrentEditorName();
+    if (!editorName) {
+      alert('Escribe tu nombre para liberar bloqueos.');
+      if (inputName) inputName.focus();
+      return;
+    }
+    if (!confirm('¿Liberar el bloqueo de edición para "' + (name || 'este archivo') + '"?')) return;
+    try {
+      var r = await fetch(u('api/files/' + id + '/sheet/force-unlock'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editor_name: editorName })
+      });
+      var d = await r.json();
+      if (!d.ok) throw new Error((d && d.error) || 'No se pudo liberar el bloqueo');
+      setMsg(uploadMsg, 'Bloqueo liberado correctamente.', 'ok');
+      await loadFiles();
+    } catch (e) {
+      setMsg(uploadMsg, 'Error al liberar bloqueo: ' + (e && e.message ? e.message : e), 'error');
+    }
+  }
 
   /* ─── Modal validar: multi-paso ─── */
 
@@ -919,7 +1232,7 @@
     setMsg(valUploadMsg, 'Subiendo archivo...', 'info');
 
     try {
-      var r = await fetch('api/files', { method: 'POST', body: fd });
+      var r = await fetch(u('api/files'), { method: 'POST', body: fd });
       var data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Error al subir');
       setMsg(uploadMsg, 'Archivo "' + (data.file.original_name || '') + '" subido como validado. El archivo original fue reemplazado.', 'ok');
@@ -953,7 +1266,7 @@
     setMsg(valSelectMsg, 'Procesando...', 'info');
 
     try {
-      var r = await fetch('api/files/' + pendingValidateId + '/replace-with', {
+      var r = await fetch(u('api/files/' + pendingValidateId + '/replace-with'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ validated_file_id: parseInt(selectedId, 10), validated_by: vName }),
@@ -971,7 +1284,7 @@
 
   async function changeStatus(id, newStatus) {
     try {
-      var r = await fetch('api/files/' + id + '/status', {
+      var r = await fetch(u('api/files/' + id + '/status'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -987,13 +1300,1703 @@
   async function deleteFile(id) {
     if (!confirm('¿Eliminar este archivo? Esta acción no se puede deshacer.')) return;
     try {
-      var r = await fetch('api/files/' + id, { method: 'DELETE' });
+      var r = await fetch(u('api/files/' + id), { method: 'DELETE' });
       var data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Error');
       await loadFiles();
     } catch (e) {
       alert('Error al eliminar: ' + e.message);
     }
+  }
+
+  function onEditFileClick(id, asSheet) {
+    var fid = parseInt(id, 10);
+    var file = filesCache.find(function (f) { return f.id === fid; });
+    if (!file) return;
+    if (file.status !== 'validado') {
+      alert('Solo se permite editar archivos en la pestaña "Validados".');
+      return;
+    }
+    if (asSheet) {
+      openSheetEditor(fid);
+    } else {
+      openEditModal(String(fid));
+    }
+  }
+
+  function setSheetMsg(t, cl) {
+    if (!sheetStatus) return;
+    sheetStatus.textContent = t != null ? t : '';
+    sheetStatus.className = 'sheet-editor-status' + (cl ? ' ' + cl : '');
+  }
+
+  function colNameAtIndexUnique(raw, index) {
+    if (!sheetState) return (String(raw || '').trim() || 'Columna');
+    var base = (String(raw != null ? raw : '')).trim() || 'Columna';
+    var cj;
+    for (var n = 0; n < 5000; n += 1) {
+      var candidate = n === 0 ? base : (base + ' (' + n + ')');
+      var usedElsewhere = false;
+      for (cj = 0; cj < sheetState.columns.length; cj += 1) {
+        if (cj === index) continue;
+        if (sheetState.columns[cj] === candidate) { usedElsewhere = true; break; }
+      }
+      if (!usedElsewhere) return candidate;
+    }
+    return base;
+  }
+
+  function newEmptyRow() {
+    var o = {};
+    (sheetState ? sheetState.columns : []).forEach(function (c) { o[c] = ''; });
+    return o;
+  }
+
+  function uniqueNewColumnName() {
+    var n;
+    for (n = 0; n < 2000; n += 1) {
+      var c = 'Columna nueva' + (n > 0 ? ' ' + (n + 1) : '');
+      if (!sheetState || sheetState.columns.indexOf(c) < 0) return c;
+    }
+    return 'Col_' + String(Date.now());
+  }
+
+  function insertColumnLeftAt(ci) {
+    if (!sheetState) return false;
+    if (isNaN(ci) || ci < 0 || ci > sheetState.columns.length) return false;
+    if (sheetState.columns.length >= 200) {
+      setSheetMsg('Límite de 200 columnas. Divida el archivo o use otra hoja.', 'error');
+      return false;
+    }
+    var newCol = uniqueNewColumnName();
+    sheetState.columns.splice(ci, 0, newCol);
+    sheetState.rows.forEach(function (r) { if (r) r[newCol] = ''; });
+    if (sheetState.rows.length === 0) sheetState.rows = [newEmptyRow()];
+    sheetDirty = true;
+    renderSheetTable();
+    return true;
+  }
+
+  function deleteColumnAt(ci) {
+    if (!sheetState) return false;
+    if (isNaN(ci) || ci < 0 || ci >= sheetState.columns.length) return false;
+    var colName = sheetState.columns[ci];
+    if (!confirm('¿Eliminar la columna "' + colName + '"?')) return false;
+    sheetState.columns.splice(ci, 1);
+    sheetState.rows.forEach(function (row) { if (row) delete row[colName]; });
+    if (sheetState.columns.length === 0) sheetState.rows = [];
+    sheetDirty = true;
+    renderSheetTable();
+    return true;
+  }
+
+  function deleteRowAt(ri) {
+    if (!sheetState) return false;
+    if (isNaN(ri) || ri < 0 || ri >= sheetState.rows.length) return false;
+    if (!confirm('¿Eliminar la fila #' + (ri + 1) + '?')) return false;
+    sheetState.rows.splice(ri, 1);
+    sheetDirty = true;
+    renderSheetTable();
+    return true;
+  }
+
+  function hideSheetContextMenu() {
+    if (sheetContextMenuEl) sheetContextMenuEl.style.display = 'none';
+    sheetContextTarget = null;
+  }
+
+  function ensureSheetContextMenu() {
+    if (sheetContextMenuEl) return sheetContextMenuEl;
+    var menu = document.createElement('div');
+    menu.id = 'sheetContextMenu';
+    menu.className = 'sheet-context-menu';
+    menu.innerHTML = ''
+      + '<button type="button" class="sheet-context-item" data-action="insert_col_left">Insertar columna (izquierda)</button>'
+      + '<button type="button" class="sheet-context-item" data-action="delete_col">Eliminar columna</button>'
+      + '<button type="button" class="sheet-context-item" data-action="delete_row">Eliminar fila</button>';
+    document.body.appendChild(menu);
+    menu.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest('.sheet-context-item');
+      if (!btn || !sheetContextTarget) return;
+      var action = btn.getAttribute('data-action');
+      if (action === 'insert_col_left' && sheetContextTarget.ci != null) {
+        insertColumnLeftAt(sheetContextTarget.ci);
+      } else if (action === 'delete_col' && sheetContextTarget.ci != null) {
+        deleteColumnAt(sheetContextTarget.ci);
+      } else if (action === 'delete_row' && sheetContextTarget.ri != null) {
+        deleteRowAt(sheetContextTarget.ri);
+      } else {
+        setSheetMsg('Selecciona una celda, columna o fila para aplicar la acción.', 'info');
+      }
+      hideSheetContextMenu();
+    });
+    sheetContextMenuEl = menu;
+    return menu;
+  }
+
+  function showSheetContextMenu(x, y, target) {
+    var menu = ensureSheetContextMenu();
+    sheetContextTarget = target || { ci: null, ri: null };
+    menu.style.display = 'block';
+    menu.style.left = Math.max(8, x) + 'px';
+    menu.style.top = Math.max(8, y) + 'px';
+    var rect = menu.getBoundingClientRect();
+    var maxX = window.innerWidth - rect.width - 8;
+    var maxY = window.innerHeight - rect.height - 8;
+    if (rect.left > maxX) menu.style.left = Math.max(8, maxX) + 'px';
+    if (rect.top > maxY) menu.style.top = Math.max(8, maxY) + 'px';
+  }
+
+  function onColumnHeaderBlur(input) {
+    if (!sheetState || !input) return;
+    var index = parseInt(input.getAttribute('data-ci'), 10);
+    if (isNaN(index) || index < 0 || index >= sheetState.columns.length) return;
+    var oldName = sheetState.columns[index];
+    var newName = colNameAtIndexUnique(input.value, index);
+    if (oldName === newName) {
+      if (input.value !== newName) input.value = newName;
+      return;
+    }
+    sheetState.columns[index] = newName;
+    sheetState.rows.forEach(function (row) {
+      if (!row) return;
+      row[newName] = (row[oldName] != null && row[oldName] !== undefined) ? String(row[oldName]) : '';
+      if (oldName !== newName) delete row[oldName];
+    });
+    sheetDirty = true;
+    renderSheetTable();
+  }
+
+  function getCurrentEditorName() {
+    var n = (inputName && inputName.value || '').trim();
+    if (!n) n = (localStorage.getItem('koboup_name') || '').trim();
+    return n;
+  }
+
+  function normalizeSelection(sel) {
+    if (!sel) return null;
+    return {
+      r1: Math.min(sel.r1, sel.r2),
+      c1: Math.min(sel.c1, sel.c2),
+      r2: Math.max(sel.r1, sel.r2),
+      c2: Math.max(sel.c1, sel.c2)
+    };
+  }
+
+  function hasSelection() {
+    var s = normalizeSelection(sheetSelection);
+    return !!(s && sheetState && s.r1 >= 0 && s.c1 >= 0 && s.r2 < sheetState.rows.length && s.c2 < sheetState.columns.length);
+  }
+
+  function isCellSelected(r, c) {
+    var s = normalizeSelection(sheetSelection);
+    if (!s) return false;
+    return r >= s.r1 && r <= s.r2 && c >= s.c1 && c <= s.c2;
+  }
+
+  function paintSelection() {
+    if (!sheetTableWrap) return;
+    var cells = sheetTableWrap.querySelectorAll('.sheet-cell');
+    Array.prototype.forEach.call(cells, function (el) {
+      var r = parseInt(el.getAttribute('data-r'), 10);
+      var c = parseInt(el.getAttribute('data-ci'), 10);
+      el.classList.toggle('sheet-cell-selected', isCellSelected(r, c));
+    });
+  }
+
+  function setSelection(r1, c1, r2, c2) {
+    if (!sheetState) return;
+    if (sheetState.rows.length === 0 || sheetState.columns.length === 0) return;
+    var maxR = sheetState.rows.length - 1;
+    var maxC = sheetState.columns.length - 1;
+    sheetSelection = {
+      r1: Math.max(0, Math.min(maxR, r1)),
+      c1: Math.max(0, Math.min(maxC, c1)),
+      r2: Math.max(0, Math.min(maxR, r2)),
+      c2: Math.max(0, Math.min(maxC, c2))
+    };
+    paintSelection();
+  }
+
+  function clearSelection() {
+    sheetSelection = null;
+    paintSelection();
+  }
+
+  function getSelectedCellCount() {
+    var s = normalizeSelection(sheetSelection);
+    if (!s) return 0;
+    return (s.r2 - s.r1 + 1) * (s.c2 - s.c1 + 1);
+  }
+
+  function selectedCellsMatrix() {
+    var s = normalizeSelection(sheetSelection);
+    if (!s || !sheetState) return [];
+    var out = [];
+    for (var r = s.r1; r <= s.r2; r += 1) {
+      var line = [];
+      for (var c = s.c1; c <= s.c2; c += 1) {
+        var cn = sheetState.columns[c];
+        line.push((sheetState.rows[r] && sheetState.rows[r][cn] != null) ? String(sheetState.rows[r][cn]) : '');
+      }
+      out.push(line);
+    }
+    return out;
+  }
+
+  async function copySelectedToClipboard() {
+    if (!hasSelection()) return;
+    try {
+      var lines = selectedCellsMatrix().map(function (line) { return line.join('\t'); });
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setSheetMsg('Selección copiada.', 'ok');
+    } catch (e) {
+      setSheetMsg('No se pudo copiar al portapapeles.', 'error');
+    }
+  }
+
+  function applySingleValueToSelection(value) {
+    var s = normalizeSelection(sheetSelection);
+    if (!s || !sheetState) return;
+    for (var r = s.r1; r <= s.r2; r += 1) {
+      for (var c = s.c1; c <= s.c2; c += 1) {
+        var col = sheetState.columns[c];
+        if (!sheetState.rows[r]) sheetState.rows[r] = {};
+        sheetState.rows[r][col] = value;
+      }
+    }
+    sheetDirty = true;
+  }
+
+  function parseClipboardTable(text) {
+    if (!text) return [];
+    var rows = String(text).replace(/\r/g, '').split('\n');
+    if (rows.length && rows[rows.length - 1] === '') rows.pop();
+    return rows.map(function (r) { return r.split('\t'); });
+  }
+
+  function ensureRowCount(minRows) {
+    while (sheetState.rows.length < minRows) {
+      sheetState.rows.push(newEmptyRow());
+    }
+  }
+
+  function pasteMatrixAtSelection(matrix) {
+    if (!sheetState || !matrix || matrix.length === 0) return;
+    var sel = normalizeSelection(sheetSelection);
+    var startR = sel ? sel.r1 : 0;
+    var startC = sel ? sel.c1 : 0;
+    ensureRowCount(startR + matrix.length);
+    for (var r = 0; r < matrix.length; r += 1) {
+      for (var c = 0; c < matrix[r].length; c += 1) {
+        var tc = startC + c;
+        var tr = startR + r;
+        if (tc >= sheetState.columns.length) continue;
+        var colName = sheetState.columns[tc];
+        if (!sheetState.rows[tr]) sheetState.rows[tr] = {};
+        sheetState.rows[tr][colName] = String(matrix[r][c] == null ? '' : matrix[r][c]);
+      }
+    }
+    sheetDirty = true;
+    var endR = startR + matrix.length - 1;
+    var maxCols = 0;
+    matrix.forEach(function (row) { if (row.length > maxCols) maxCols = row.length; });
+    var endC = startC + Math.max(1, maxCols) - 1;
+    setSelection(startR, startC, endR, endC);
+  }
+
+  function lockColWidth(ci, px) {
+    if (!sheetState) return;
+    if (!sheetState.colWidths) sheetState.colWidths = {};
+    var width = Math.max(70, Math.min(650, Math.round(px)));
+    sheetState.colWidths[String(ci)] = width;
+    sheetDirty = true;
+  }
+
+  function updateColRemoveOptions() {
+    if (!sheetColRemove || !sheetState) return;
+    var s = '<option value="">— Quitar columna —</option>';
+    for (var i = 0; i < sheetState.columns.length; i += 1) {
+      s += '<option value="' + i + '">' + esc(sheetState.columns[i]) + '</option>';
+    }
+    sheetColRemove.innerHTML = s;
+  }
+
+  function updateEditedValidatedButton() {
+    if (!sheetMarkEditedValidated || !sheetState || !sheetState.file) return;
+    var marked = !!sheetState.file.edited_validated;
+    sheetMarkEditedValidated.textContent = marked ? 'Quitar Editado Validado' : 'Marcar Editado Validado';
+    sheetMarkEditedValidated.classList.toggle('is-on', marked);
+  }
+
+  function normColName(v) {
+    var s = String(v == null ? '' : v).trim().toLowerCase();
+    try {
+      s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    } catch (e) {}
+    return s.replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  function looksMissingValue(v) {
+    var t = String(v == null ? '' : v).trim();
+    if (!t) return true;
+    var n = normColName(t);
+    return [
+      'nd', 'n d', 'n d ', 'n/d', 'n d', 'n.d', 'n.d.',
+      'na', 'n a', 's d', 's/d', 'sin dato',
+      'no aplica', 'none', 'null'
+    ].indexOf(n) >= 0;
+  }
+
+  function parseLatLonSimple(v) {
+    var t = String(v == null ? '' : v).trim();
+    if (!t) return ['', ''];
+    var parts = t.split(/[,\s;]+/).filter(Boolean);
+    if (parts.length < 2) return ['', ''];
+    return [parts[0], parts[1]];
+  }
+
+  function isDateYmd(v) {
+    var t = String(v == null ? '' : v).trim();
+    if (!t) return true;
+    return /^\d{4}-\d{2}-\d{2}(?:\s+00:00:00)?$/.test(t);
+  }
+
+  function tokenizeOptionValue(v) {
+    var t = String(v == null ? '' : v).trim();
+    if (!t) return [];
+    var parts = t.split(/\|\|\||[,;]+/).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    return parts.length ? parts : [t];
+  }
+
+  function normalizeServiceName(v) {
+    var n = normColName(v);
+    if (n === 'medicina general' || n === 'medicina') return 'medicina general';
+    if (n === 'dental' || n === 'odontologia' || n === 'odontologia general') return 'dental';
+    if (n === 'fisioterapia' || n === 'fisio') return 'fisioterapia';
+    if (n === 'oftalmologia' || n === 'oftalmologia clinica') return 'oftalmologia';
+    if (n === 'laboratorios' || n === 'laboratorio') return 'laboratorios';
+    return n;
+  }
+
+  function buildSimpleCheck(columns, rows, schema, aliasToLabel) {
+    var requiredLabels = (schema || []).filter(function (x) { return !!x.required; }).map(function (x) { return x.label; });
+    var matched = {};
+    (columns || []).forEach(function (c) {
+      var col = String(c || '').trim();
+      if (!col) return;
+      var label = aliasToLabel[normColName(col)];
+      if (!label) return;
+      if (!matched[label]) matched[label] = [];
+      matched[label].push(col);
+    });
+
+    var missingRequiredColumns = requiredLabels.filter(function (lbl) { return !(matched[lbl] && matched[lbl].length); });
+    var rowsMissing = [];
+    (rows || []).forEach(function (row, idx) {
+      var missing = [];
+      requiredLabels.forEach(function (lbl) {
+        var cols = matched[lbl] || [];
+        var ok = cols.some(function (c) { return !looksMissingValue(row && row[c]); });
+        if (!ok) missing.push(lbl);
+      });
+      if (missing.length) {
+        rowsMissing.push({ row_index: idx, excel_row: idx + 2, missing_labels: missing });
+      }
+    });
+
+    var findCol = function (aliases) {
+      var wanted = aliases.map(normColName).filter(Boolean);
+      for (var i = 0; i < (columns || []).length; i += 1) {
+        var c = String(columns[i] || '');
+        if (wanted.indexOf(normColName(c)) >= 0) return c;
+      }
+      return '';
+    };
+
+    var dateRows = [];
+    var dateCol = findCol(['Fecha de atención', 'Fecha_de_atenci_n', 'Fecha', 'Fecha Atención', 'Fecha atencion']);
+    if (dateCol) {
+      (rows || []).forEach(function (row, idx) {
+        var v = String((row && row[dateCol]) || '').trim();
+        if (v && !isDateYmd(v)) dateRows.push(idx + 2);
+      });
+    }
+
+    var coordinatesRows = [];
+    var coordsCol = findCol(['Coordenadas', 'Ubicación geográfica de la atención', 'Ubicaci_n_geogr_fica_de_la_atenci_n']);
+    if (coordsCol) {
+      (rows || []).forEach(function (row, idx) {
+        var v = String((row && row[coordsCol]) || '').trim();
+        if (!v) return;
+        var ll = parseLatLonSimple(v);
+        if (!ll[0] || !ll[1]) coordinatesRows.push(idx + 2);
+      });
+    }
+
+    var referenceDestinationRows = [];
+    var refCol = findCol(['Se hizo referencia', '¿Se hizo referencia?', 'Referencia']);
+    var whereCol = findCol(['A dónde', 'A donde', '¿A dónde?', 'Referencia_donde']);
+    if (refCol && whereCol) {
+      (rows || []).forEach(function (row, idx) {
+        var refVal = normColName((row && row[refCol]) || '');
+        if (refVal === 'si' || refVal === 'sí') {
+          if (looksMissingValue(row && row[whereCol])) referenceDestinationRows.push(idx + 2);
+        }
+      });
+    }
+
+    var invalidOptionRows = [];
+    var refColForOptions = findCol(['Se hizo referencia', '¿Se hizo referencia?', 'Referencia']);
+    var preferredColumnsForLabel = function (label, colsForLabel) {
+      var target = normColName(label);
+      var exact = (colsForLabel || []).filter(function (c) { return normColName(c) === target; });
+      if (exact.length) return exact.slice(0, 1);
+      return colsForLabel || [];
+    };
+    (schema || []).forEach(function (item) {
+      var options = (item && item.options) || [];
+      if (!options.length) return;
+      var label = String(item.label || '').trim();
+      if (!label) return;
+      var colsForLabel = matched[label] || [];
+      if (!colsForLabel.length) return;
+      colsForLabel = preferredColumnsForLabel(label, colsForLabel);
+      var validSet = {};
+      options.forEach(function (op) {
+        var key = normColName(op);
+        if (key) validSet[key] = true;
+      });
+      colsForLabel.forEach(function (col) {
+        var badRows = [];
+        (rows || []).forEach(function (row, idx) {
+          // Regla condicional: "A dónde" solo se valida cuando "Se hizo referencia?" = Sí.
+          if (normColName(col) === normColName('A dónde') && refColForOptions) {
+            var refVal = normColName((row && row[refColForOptions]) || '');
+            if (!(refVal === 'si' || refVal === 'sí')) return;
+          }
+          var raw = String((row && row[col]) || '').trim();
+          if (looksMissingValue(raw)) return;
+          var tokens = tokenizeOptionValue(raw);
+          if (!tokens.length) return;
+          var bad = tokens.some(function (tk) { return !validSet[normColName(tk)]; });
+          if (bad) badRows.push(idx + 2);
+        });
+        if (badRows.length) {
+          invalidOptionRows.push({
+            label: label,
+            column: col,
+            rows: badRows.slice(0, 20),
+            count: badRows.length
+          });
+        }
+      });
+    });
+
+    var serviceLabelByKey = {
+      'medicina general': 'Medicina General',
+      'dental': 'Dental',
+      'fisioterapia': 'Fisioterapia',
+      'oftalmologia': 'Oftalmología',
+      'laboratorios': 'Laboratorios'
+    };
+    var serviceConditional = {
+      'medicina general': ['Diagnóstico Medicina General'],
+      'dental': ['Diagnóstico Odontología'],
+      'fisioterapia': ['Fisioterapia'],
+      'oftalmologia': ['Sintomas que presenta a la fecha de consulta', '¿Ha recibido algún diagnóstico previo?', 'Diagnóstico Actual'],
+      'laboratorios': []
+    };
+    var serviceMissing = [];
+    var serviceCol = findCol(['Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda']);
+    if (serviceCol) {
+      var present = {};
+      (rows || []).forEach(function (row) {
+        var val = String((row && row[serviceCol]) || '').trim();
+        if (!val) return;
+        var key = normalizeServiceName(val);
+        if (serviceConditional[key]) present[key] = true;
+      });
+      Object.keys(present).forEach(function (svcKey) {
+        var expected = serviceConditional[svcKey] || [];
+        var missing = expected.filter(function (lbl) {
+          var nk = normColName(lbl);
+          return !(columns || []).some(function (c) { return normColName(c) === nk; });
+        });
+        if (missing.length) {
+          serviceMissing.push({
+            service: serviceLabelByKey[svcKey] || svcKey,
+            missing_columns: missing
+          });
+        }
+      });
+    }
+
+    var ready = (
+      missingRequiredColumns.length === 0
+      && rowsMissing.length === 0
+      && dateRows.length === 0
+      && coordinatesRows.length === 0
+      && invalidOptionRows.length === 0
+      && referenceDestinationRows.length === 0
+      && serviceMissing.length === 0
+    );
+
+    return {
+      ready_to_submit: ready,
+      missing_required_columns: missingRequiredColumns,
+      rows_with_missing_required: {
+        count: rowsMissing.length,
+        sample: rowsMissing.slice(0, 20)
+      },
+      invalid_formats: {
+        date_rows: dateRows.slice(0, 30),
+        coordinates_rows: coordinatesRows.slice(0, 30),
+        option_rows: invalidOptionRows.slice(0, 20),
+        reference_destination_rows: referenceDestinationRows.slice(0, 30)
+      },
+      service_conditional_missing: serviceMissing,
+      human_message: ready ? 'Listo para enviar a Kobo.' : 'Faltan datos por corregir antes de enviar a Kobo.'
+    };
+  }
+
+  function computeColumnsCheckFromSchema(columns, schema, rows, previousCheck) {
+    var aliasToLabel = {};
+    (schema || []).forEach(function (item) {
+      var label = String(item.label || '').trim();
+      if (!label) return;
+      var aliases = (item.aliases || []).slice();
+      aliases.push(label);
+      aliases.forEach(function (a) {
+        var k = normColName(a);
+        if (k && !aliasToLabel[k]) aliasToLabel[k] = label;
+      });
+    });
+    var requiredLabels = (schema || []).filter(function (x) { return !!x.required; }).map(function (x) { return x.label; });
+    var matched = {};
+    var unknown = [];
+    var suggestions = {};
+    var aliasKeys = Object.keys(aliasToLabel);
+
+    (columns || []).forEach(function (c) {
+      var col = String(c || '').trim();
+      if (!col) return;
+      var key = normColName(col);
+      var label = aliasToLabel[key];
+      if (label) {
+        if (!matched[label]) matched[label] = [];
+        matched[label].push(col);
+      } else {
+        unknown.push(col);
+        var best = null;
+        var bestScore = 0;
+        aliasKeys.forEach(function (k) {
+          var score = 0;
+          if (k === key) score = 1;
+          else if (k.indexOf(key) >= 0 || key.indexOf(k) >= 0) score = 0.82;
+          else {
+            var parts = key.split(' ');
+            var hits = 0;
+            parts.forEach(function (p) { if (p && k.indexOf(p) >= 0) hits += 1; });
+            score = parts.length ? hits / parts.length : 0;
+          }
+          if (score > bestScore) { bestScore = score; best = k; }
+        });
+        if (best && bestScore >= 0.72) {
+          suggestions[col] = aliasToLabel[best];
+        }
+      }
+    });
+
+    var missing = requiredLabels.filter(function (l) { return !matched[l]; });
+    var dups = [];
+    Object.keys(matched).forEach(function (lbl) {
+      if (matched[lbl].length > 1) dups.push({ label: lbl, columns: matched[lbl] });
+    });
+    return {
+      ok_required: missing.length === 0,
+      required_total: requiredLabels.length,
+      required_present: requiredLabels.length - missing.length,
+      missing_required_columns: missing,
+      unknown_columns: unknown,
+      duplicates: dups,
+      rename_suggestions: suggestions,
+      simple_check: buildSimpleCheck(columns || [], rows || [], schema || [], aliasToLabel),
+      kobo_schema_source: previousCheck && previousCheck.kobo_schema_source ? previousCheck.kobo_schema_source : ''
+    };
+  }
+
+  function renderSheetColumnsCheck() {
+    if (!sheetColumnsCheck) return;
+    if (!sheetState || !sheetState.columnsCheck) {
+      sheetColumnsCheck.style.display = 'none';
+      sheetColumnsCheck.innerHTML = '';
+      if (sheetApplySuggestions) sheetApplySuggestions.style.display = 'none';
+      return;
+    }
+    var cc = sheetState.columnsCheck;
+    var missing = cc.missing_required_columns || [];
+    var unknown = cc.unknown_columns || [];
+    var dups = cc.duplicates || [];
+    var sugg = cc.rename_suggestions || {};
+    var suggCount = Object.keys(sugg).length;
+    var sc = cc.simple_check || {};
+    var rowsMiss = (sc.rows_with_missing_required && sc.rows_with_missing_required.count) || 0;
+    var rowsSample = (sc.rows_with_missing_required && sc.rows_with_missing_required.sample) || [];
+    var invalid = sc.invalid_formats || {};
+    var statusCls = sc.ready_to_submit ? 'ok' : 'warn';
+    var h = '<div class="sheet-check-assistant">';
+    h += '<div class="sheet-check-header-row">';
+    h += '<div class="sheet-check-title-main">Antes de enviar a Kobo</div>';
+    h += '<div class="sheet-check-card ' + statusCls + '">';
+    h += '<div class="sheet-check-title">' + (sc.ready_to_submit ? 'Listo para enviar' : 'Faltan datos') + '</div>';
+    h += '</div></div>';
+    h += '<div class="sheet-check-human">' + esc(sc.human_message || '') + '</div>';
+
+    if (missing.length) {
+      h += '<div class="sheet-check-list"><strong>Corrige estas columnas obligatorias:</strong> ' + missing.map(esc).join(', ') + '</div>';
+    }
+    if (rowsMiss) {
+      h += '<div class="sheet-check-list"><strong>Filas con datos incompletos:</strong> ' + rowsMiss + '</div>';
+      if (rowsSample.length) {
+        h += '<div class="sheet-check-list">Primeras filas: ' + rowsSample.slice(0, 8).map(function (r) {
+          return '#'+ esc(String(r.excel_row || ''));
+        }).join(', ') + '</div>';
+      }
+    }
+    if (invalid.date_rows && invalid.date_rows.length) {
+      h += '<div class="sheet-check-list"><strong>Formato de fecha por revisar:</strong> filas ' + invalid.date_rows.slice(0, 8).map(String).join(', ') + '</div>';
+    }
+    if (invalid.coordinates_rows && invalid.coordinates_rows.length) {
+      h += '<div class="sheet-check-list"><strong>Coordenadas por revisar:</strong> filas ' + invalid.coordinates_rows.slice(0, 8).map(String).join(', ') + '</div>';
+    }
+    if (invalid.option_rows && invalid.option_rows.length) {
+      h += '<div class="sheet-check-list"><strong>Valores fuera de catálogo:</strong> '
+        + invalid.option_rows.slice(0, 4).map(function (it) {
+          var rs = (it.rows || []).slice(0, 4).map(String).join(', ');
+          return esc(String(it.label || it.column || 'Campo')) + ' (filas ' + esc(rs || '...') + ')';
+        }).join(' · ')
+        + '</div>';
+    }
+    if (invalid.reference_destination_rows && invalid.reference_destination_rows.length) {
+      h += '<div class="sheet-check-list"><strong>Falta "¿A dónde?" cuando "¿Se hizo referencia?" = Sí:</strong> filas '
+        + invalid.reference_destination_rows.slice(0, 10).map(String).join(', ')
+        + '</div>';
+    }
+    if (sc.service_conditional_missing && sc.service_conditional_missing.length) {
+      h += '<div class="sheet-check-list"><strong>Campos por servicio:</strong> '
+        + sc.service_conditional_missing.map(function (it) {
+          return esc(String(it.service || 'Servicio')) + ' → ' + (it.missing_columns || []).map(esc).join(', ');
+        }).join(' · ')
+        + '</div>';
+    }
+
+    h += '<details class="sheet-check-advanced">';
+    h += '<summary>Opciones avanzadas (soporte)</summary>';
+    if (unknown.length) {
+      h += '<div class="sheet-check-list"><strong>Columnas no reconocidas:</strong> ' + unknown.map(esc).join(', ') + '</div>';
+    }
+    if (dups.length) {
+      h += '<div class="sheet-check-list"><strong>Columnas duplicadas:</strong> ' + dups.map(function (d) { return esc(d.label) + ' (' + d.columns.length + ')'; }).join(', ') + '</div>';
+    }
+    if (suggCount) {
+      h += '<div class="sheet-check-list"><strong>Sugerencias de nombre:</strong> ' + Object.keys(sugg).slice(0, 8).map(function (k) { return '"' + esc(k) + '" → "' + esc(sugg[k]) + '"'; }).join(' · ') + '</div>';
+    }
+    h += '</details></div>';
+
+    sheetColumnsCheck.innerHTML = h;
+    sheetColumnsCheck.style.display = '';
+    if (sheetApplySuggestions) {
+      sheetApplySuggestions.style.display = suggCount ? '' : 'none';
+      sheetApplySuggestions.disabled = !suggCount;
+    }
+  }
+
+  function schemaInfoForColumnName(colName) {
+    if (!sheetState || !sheetState.koboSchema) return null;
+    var key = normColName(colName);
+    if (!key) return null;
+
+    // Soporta columnas derivadas como "Lugar de atención: Chihuahua"
+    var baseKey = key;
+    var raw = String(colName || '');
+    if (raw.indexOf(':') >= 0) {
+      baseKey = normColName(raw.split(':', 1)[0]);
+    }
+
+    for (var i = 0; i < sheetState.koboSchema.length; i += 1) {
+      var it = sheetState.koboSchema[i];
+      var aliases = (it.aliases || []).slice();
+      aliases.push(it.label);
+      for (var j = 0; j < aliases.length; j += 1) {
+        var a = normColName(aliases[j]);
+        if (a === key || (baseKey && a === baseKey)) {
+          // Tooltip específico para columnas derivadas:
+          // "Lugar de Atención: <Estado>"
+          if (String(colName || '').indexOf(':') >= 0 && a === normColName('Lugar de atención')) {
+            var suffixRaw = String(colName || '').split(':').slice(1).join(':').trim();
+            var suffix = normColName(suffixRaw);
+            var byState = {
+              'sonora': ['Ciudad Obregón', 'Otro'],
+              'nuevo leon': ['Montemorelos'],
+              'baja california': [
+                'Valle de la Trinidad',
+                'San Matías',
+                'Santa Catalina',
+                'Comunidad Kiliwa',
+                'Tijuana',
+                'Otro'
+              ],
+              'baja california sur': [
+                'Santa Rosalía',
+                'Mulege',
+                'Loreto',
+                'Ciudad Constitución',
+                'Vizcaíno',
+                'Bahía Tortuga',
+                'Bahía Asunción',
+                'Punta Abreojos',
+                'La Bucana',
+                'Otro'
+              ],
+              'chihuahua': ['Ciudad Juárez', 'Otro'],
+              'otro': ['Otro']
+            };
+            if (byState[suffix]) {
+              var copy = Object.assign({}, it);
+              copy.options = byState[suffix].slice();
+              copy.hint = 'Opciones para "' + suffixRaw + '".';
+              return copy;
+            }
+          }
+          return it;
+        }
+      }
+    }
+    return null;
+  }
+
+  function buildColumnTooltip(it) {
+    if (!it) return '';
+    var lines = [];
+    if (it.required) lines.push('Obligatoria');
+    if (it.hint) lines.push(String(it.hint));
+    if (it.options && it.options.length) {
+      lines.push('Opciones Kobo:');
+      for (var i = 0; i < it.options.length; i += 1) {
+        lines.push('- ' + String(it.options[i]));
+      }
+    }
+    return lines.join('\n');
+  }
+
+  function applyDiagnosticoOtroSplitForRow(rowObj, columns, editedCol, editedValue) {
+    if (!rowObj || !columns || !columns.length) return false;
+    var diagCol = _pickColumnByAliases(columns, [
+      'Diagnóstico Medicina General',
+      'Diagnostico Medicina General',
+      'Diagnósticos Medicina General',
+      'Diagnosticos Medicina General'
+    ]);
+    var espCol = _pickColumnByAliases(columns, [
+      'Especificar',
+      'Especificar diagnóstico',
+      'Especificar Diagnóstico Medicina General',
+      'Especificar Diagnostico Medicina General'
+    ]);
+    if (!diagCol || !espCol) return false;
+    if (String(editedCol || '') !== String(diagCol)) return false;
+    var raw = String(editedValue == null ? '' : editedValue).trim();
+    if (!raw) return false;
+    var m = raw.match(/^\s*otro\s*[:\-]\s*(.+)$/i);
+    if (!m || !m[1]) return false;
+    rowObj[diagCol] = 'Otro';
+    rowObj[espCol] = String(m[1]).trim();
+    return true;
+  }
+
+  function renderSheetTable() {
+    if (!sheetState || !sheetTableWrap) return;
+    if (sheetState.koboSchema) {
+      sheetState.columnsCheck = computeColumnsCheckFromSchema(
+        sheetState.columns || [],
+        sheetState.koboSchema,
+        sheetState.rows || [],
+        sheetState.columnsCheck || null
+      );
+      renderSheetColumnsCheck();
+    } else {
+      renderSheetColumnsCheck();
+    }
+    var cols = sheetState.columns;
+    var rows = sheetState.rows;
+    var refColName = _pickColumnByAliases(cols, ['Se hizo referencia', '¿Se hizo referencia?', 'Referencia']);
+    var whereColName = _pickColumnByAliases(cols, ['A dónde', 'A donde', '¿A dónde?', 'Referencia_donde']);
+    if (sheetTitle) {
+      var fn = sheetState.file && (sheetState.file.original_name || sheetState.file.stored_name) || 'Archivo';
+      sheetTitle.textContent = 'Hoja: ' + fn;
+    }
+    if (cols.length === 0) {
+      sheetTableWrap.innerHTML = '<p class="sheet-empty-hint">Añada al menos una columna con <strong>+ Columna</strong> (o cargue de nuevo si el error persistió).</p>';
+      updateColRemoveOptions();
+      return;
+    }
+    var h = '<table class="sheet-table" role="grid" aria-label="Hoja de datos del archivo"><thead><tr><th class="sheet-corner" scope="col">#</th>';
+    for (var cj = 0; cj < cols.length; cj += 1) {
+      var w = sheetState.colWidths && sheetState.colWidths[String(cj)] ? sheetState.colWidths[String(cj)] : 135;
+      var schemaInfo = schemaInfoForColumnName(cols[cj]);
+      var tipText = buildColumnTooltip(schemaInfo);
+      var reqMark = schemaInfo && schemaInfo.required ? '<span class="sheet-col-required">*</span>' : '';
+      var tipIcon = tipText ? ('<span class="sheet-col-tip" data-tip="' + escAttr(tipText) + '" aria-label="Ayuda de columna">i</span>') : '';
+      h += '<th class="sheet-col-h" scope="col" data-ci="' + cj + '" style="width:' + w + 'px;min-width:' + w + 'px;max-width:' + w + 'px;">'
+        + reqMark
+        + tipIcon
+        + '<input class="sheet-header-input" type="text" data-ci="' + cj + '" value="' + escAttr(cols[cj]) + '" spellcheck="false" />'
+        + '<span class="sheet-col-resizer" data-ci="' + cj + '" title="Arrastre para cambiar el ancho"></span>'
+        + '</th>';
+    }
+    h += '<th class="sheet-dummy" aria-hidden="true"></th></tr></thead><tbody>';
+    if (rows.length === 0) {
+      h += '<tr><td style="z-index:0" colspan="' + (cols.length + 2) + '"><p class="sheet-empty-hint" style="margin:0.5rem 0.5rem 0.5rem 1.2rem">No hay filas. Pulse <strong>+ Fila</strong> para añadir registros.</p></td></tr>';
+    }
+    for (var ri = 0; ri < rows.length; ri += 1) {
+      h += '<tr><th class="sheet-row-h" scope="row" role="rowheader" data-r="' + ri + '">#' + (ri + 1) + '<br/><button type="button" class="sheet-btn-del-row" data-r="' + ri + '" title="Quitar fila" aria-label="Quitar fila ' + (ri + 1) + '">×</button></th>';
+      for (cj = 0; cj < cols.length; cj += 1) {
+        var cname = cols[cj];
+        var cw = sheetState.colWidths && sheetState.colWidths[String(cj)] ? sheetState.colWidths[String(cj)] : 135;
+        var cell = (rows[ri] && (rows[ri][cname] != null) ? String(rows[ri][cname]) : '');
+        var disabledWhere = false;
+        if (whereColName && refColName && cname === whereColName) {
+          var refVal = normColName(rows[ri] && rows[ri][refColName] || '');
+          disabledWhere = !(refVal === 'si' || refVal === 'sí');
+          if (disabledWhere && cell) {
+            rows[ri][cname] = '';
+            cell = '';
+          }
+        }
+        var disAttr = disabledWhere ? ' disabled aria-disabled="true"' : '';
+        var disCls = disabledWhere ? ' sheet-cell-disabled' : '';
+        h += '<td style="width:' + cw + 'px;min-width:' + cw + 'px;max-width:' + cw + 'px;"><input class="sheet-cell' + disCls + '" type="text" data-r="' + ri + '" data-ci="' + cj + '" value="' + escAttr(cell) + '" spellcheck="false"' + disAttr + ' /></td>';
+      }
+      h += '<td class="sheet-dummy" aria-hidden="true"></td></tr>';
+    }
+    h += '</tbody></table>';
+    sheetTableWrap.innerHTML = h;
+    updateColRemoveOptions();
+    paintSelection();
+  }
+
+  function stopSheetLockHeartbeat() {
+    if (sheetLockHeartbeat) {
+      clearInterval(sheetLockHeartbeat);
+      sheetLockHeartbeat = null;
+    }
+  }
+
+  function startSheetLockHeartbeat() {
+    stopSheetLockHeartbeat();
+    if (!sheetState || !sheetState.file || !sheetState.editorName) return;
+    sheetUnlockSent = false;
+    sheetLockHeartbeat = setInterval(function () {
+      if (!sheetState || !sheetState.file || !sheetState.editorName) return;
+      fetch(u('api/files/' + sheetState.file.id + '/sheet/heartbeat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editor_name: sheetState.editorName })
+      }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!d.ok) throw new Error(d.error || 'Bloqueo perdido');
+          return d;
+        });
+      }).catch(function () {
+        // Mantener silencioso; el siguiente guardado/open detectará bloqueo.
+      });
+    }, 30 * 1000);
+  }
+
+  function releaseSheetLock(forceBeacon) {
+    if (!sheetState || !sheetState.file || !sheetState.editorName) return;
+    if (sheetUnlockSent) return;
+    var payload = JSON.stringify({ editor_name: sheetState.editorName });
+    var url = u('api/files/' + sheetState.file.id + '/sheet/unlock');
+    if ((forceBeacon || document.visibilityState === 'hidden') && navigator.sendBeacon) {
+      try {
+        var blob = new Blob([payload], { type: 'application/json' });
+        var sent = navigator.sendBeacon(url, blob);
+        if (sent) {
+          sheetUnlockSent = true;
+          return;
+        }
+      } catch (e) {}
+    }
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true
+    }).then(function () {
+      sheetUnlockSent = true;
+    }).catch(function () {});
+  }
+
+  function closeSheetEditor(allowWithoutConfirm) {
+    if (sheetOverlay && !allowWithoutConfirm && sheetDirty && !confirm('Hay cambios sin guardar. ¿Cerrar de todos modos?')) return;
+    stopSheetGuide(false);
+    hideSheetContextMenu();
+    closeKoboSubmitModal();
+    releaseSheetLock();
+    stopSheetLockHeartbeat();
+    if (sheetOverlay) sheetOverlay.style.display = 'none';
+    try { document.body.style.overflow = ''; } catch (e) {}
+    sheetUnlockSent = false;
+    sheetState = null;
+    sheetDirty = false;
+    sheetSelection = null;
+    sheetSelecting = false;
+    if (sheetTableWrap) sheetTableWrap.innerHTML = '';
+    renderSheetColumnsCheck();
+    if (sheetSave) sheetSave.disabled = false;
+    setSheetMsg('', '');
+  }
+
+  function openSheetEditor(id) {
+    if (!sheetOverlay) return;
+    if (isNaN(id) || id == null) return;
+    var file = filesCache.find(function (f) { return f.id === id; });
+    if (!file) return;
+    if (!canOpenSheetEditor(file)) {
+      if (isStubXlsName(file.stored_name)) {
+        alert('Los archivos .xls (Excel antiguo) no se pueden reescribir con seguridad. Conviértalos a .xlsx, vuelva a subir el archivo, o abra y guárdelos en Excel con formato .xlsx.');
+        return;
+      }
+      if (file.file_type === 'pdf') {
+        openEditModal(String(id));
+        return;
+      }
+    }
+    sheetState = null;
+    sheetUnlockSent = false;
+    sheetDirty = false;
+    clearSelection();
+    if (sheetTableWrap) sheetTableWrap.innerHTML = '<p class="sheet-skel">Cargando hoja del servidor…</p>';
+    if (sheetHint) sheetHint.textContent = 'Corrige datos, revisa el panel y pulsa "Guardar todo" para dejar el archivo actualizado.';
+    setSheetMsg('Cargando…', 'info');
+    var editorName = getCurrentEditorName();
+    if (!editorName) {
+      var asked = prompt('Para editar, escribe tu nombre (responsable):', (localStorage.getItem('koboup_name') || ''));
+      editorName = (asked || '').trim();
+      if (!editorName) {
+        alert('Debes escribir tu nombre para abrir el editor.');
+        if (inputName) inputName.focus();
+        return;
+      }
+      if (inputName) inputName.value = editorName;
+      localStorage.setItem('koboup_name', editorName);
+    }
+    localStorage.setItem('koboup_name', editorName);
+    if (sheetOriginalName) sheetOriginalName.value = file.original_name || file.stored_name || '';
+    if (sheetUploadedBy) {
+      sheetUploadedBy.value = editorName;
+      sheetUploadedBy.readOnly = true;
+    }
+    if (sheetNotes) sheetNotes.value = file.notes || '';
+    sheetOverlay.style.display = 'flex';
+    try { document.body.style.overflow = 'hidden'; } catch (e) {}
+
+    fetch(u('api/files/' + id + '/sheet?editor_name=' + encodeURIComponent(editorName)), { method: 'GET' })
+      .then(function (r) { return r.json().then(function (d) { d._st = r.status; return d; }); })
+      .then(function (d) {
+        if (!d.ok) {
+          if (d._st === 423) {
+            throw new Error((d && d.error) || ('El archivo está siendo editado por ' + (d.locked_by || 'otro usuario')));
+          }
+          if (d._st === 413) throw new Error((d && d.error) || 'Archivo demasiado grande');
+          if (d._st === 400) {
+            if (d.error && d.error.toLowerCase().indexOf('pdf') >= 0) {
+              if (sheetOverlay) sheetOverlay.style.display = 'none';
+              try { document.body.style.overflow = ''; } catch (e) {}
+              if (typeof openEditModal === 'function') openEditModal(String(id));
+              return;
+            }
+            throw new Error((d && d.error) || 'No se pudo leer el archivo');
+          }
+          if (d._st && d._st >= 400) throw new Error((d && d.error) || 'Error al leer hoja');
+        }
+        if (!d.columns) d.columns = [];
+        if (!d.rows) d.rows = [];
+        var rows = (d.rows).map(function (r) { return Object.assign({}, r || {}); });
+        sheetState = {
+          file: file,
+          columns: (d.columns || []).slice(),
+          rows: rows,
+          colWidths: {},
+          editorName: editorName,
+          koboSchema: d.columns_check && d.columns_check.kobo_schema ? d.columns_check.kobo_schema : null,
+          columnsCheck: d.columns_check || null
+        };
+        if (d.file) sheetState.file = d.file;
+        startSheetLockHeartbeat();
+        updateEditedValidatedButton();
+        setSheetMsg('Listo. "Guardar todo" escribe en disco.', 'ok');
+        renderSheetTable();
+        try {
+          if (!localStorage.getItem(SHEET_GUIDE_SEEN_KEY)) {
+            setTimeout(function () { startSheetGuide(); }, 350);
+          }
+        } catch (e) {}
+      })
+      .catch(function (e) {
+        if (e && e.message && e.message.toLowerCase().indexOf('siendo editado') >= 0) {
+          alert(e.message);
+        }
+        if (e && e.message) setSheetMsg('Error: ' + e.message, 'error');
+        if (sheetTableWrap) {
+          sheetTableWrap.innerHTML = '<p class="sheet-skel">No se pudo cargar la hoja. Revise conexión o cierre (Esc o Cerrar).</p>';
+        }
+      });
+  }
+
+  async function saveSheetAll() {
+    if (!sheetState) return;
+    var on = (sheetOriginalName && sheetOriginalName.value || '').trim();
+    if (!on) { setSheetMsg('Indique el nombre visible del archivo (obligatorio).', 'error'); if (sheetOriginalName) sheetOriginalName.focus(); return; }
+    if (sheetSave) sheetSave.disabled = true;
+    var editorName = getCurrentEditorName();
+    if (!editorName) {
+      setSheetMsg('Escribe tu nombre para guardar.', 'error');
+      if (inputName) inputName.focus();
+      return;
+    }
+    localStorage.setItem('koboup_name', editorName);
+    setSheetMsg('Guardando tabla y metadatos…', 'info');
+    var id = sheetState.file && sheetState.file.id;
+    try {
+      if (!sheetState.columns || sheetState.columns.length === 0) {
+        throw new Error('Añada al menos una columna antes de guardar.');
+      }
+      var r1 = await fetch(u('api/files/' + id + '/sheet'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          columns: sheetState.columns,
+          rows: sheetState.rows,
+          original_name: on,
+          notes: (sheetNotes && sheetNotes.value || '').trim(),
+          editor_name: editorName
+        })
+      });
+      var d1 = await r1.json();
+      if (r1.status === 423) throw new Error((d1 && d1.error) || 'Archivo bloqueado por otro usuario');
+      if (!d1.ok) throw new Error((d1 && d1.error) || 'No se pudo guardar la tabla');
+      if (d1.file) sheetState.file = d1.file;
+      if (sheetUploadedBy) sheetUploadedBy.value = editorName;
+      setSheetMsg('Guardado en el servidor.', 'ok');
+      if (typeof uploadMsg !== 'undefined' && uploadMsg) setMsg(uploadMsg, 'Archivo y hoja actualizados.', 'ok');
+      sheetDirty = false;
+      await loadFiles();
+    } catch (e) {
+      setSheetMsg('Error: ' + (e && e.message), 'error');
+    } finally {
+      if (sheetSave) sheetSave.disabled = false;
+    }
+  }
+
+  function _pickColumnByAliases(cols, aliases) {
+    if (!cols || !cols.length) return '';
+    var normAliases = (aliases || []).map(function (a) {
+      return String(a || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    }).filter(Boolean);
+    for (var i = 0; i < cols.length; i += 1) {
+      var c = String(cols[i] || '');
+      var nc = c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      if (normAliases.indexOf(nc) >= 0) return c;
+    }
+    return '';
+  }
+
+  function closeKoboSubmitModal() {
+    if (!koboSubmitModalOverlay) return;
+    if (koboSubmitBusy) return;
+    koboSubmitModalOverlay.style.display = 'none';
+    if (koboSubmitRows) koboSubmitRows.innerHTML = '';
+    if (koboSubmitPassword) koboSubmitPassword.value = '';
+    setMsg(koboSubmitMsg, '', '');
+  }
+
+  function openKoboSubmitModal() {
+    if (!sheetState || !sheetState.rows || !sheetState.columns || !koboSubmitModalOverlay || !koboSubmitRows) return;
+    var cols = sheetState.columns || [];
+    var nameCol = _pickColumnByAliases(cols, ['Nombre del Paciente', 'Nombre', 'NAME']);
+    var serviceCol = _pickColumnByAliases(cols, ['Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda']);
+    var html = '';
+    for (var i = 0; i < sheetState.rows.length; i += 1) {
+      var row = sheetState.rows[i] || {};
+      var n = nameCol ? (row[nameCol] || '') : '';
+      var s = serviceCol ? (row[serviceCol] || '') : '';
+      html += '<tr>'
+        + '<td><input type="checkbox" class="kobo-row-check" data-row="' + i + '" /></td>'
+        + '<td>#' + (i + 2) + '</td>'
+        + '<td>' + esc(String(n || '—')) + '</td>'
+        + '<td>' + esc(String(s || '—')) + '</td>'
+        + '</tr>';
+    }
+    koboSubmitRows.innerHTML = html || '<tr><td colspan="4">No hay filas para enviar.</td></tr>';
+    if (koboSubmitSelectAll) koboSubmitSelectAll.checked = false;
+    if (koboSubmitModalFilename) {
+      var fn = (sheetState.file && (sheetState.file.original_name || sheetState.file.stored_name)) || 'archivo';
+      koboSubmitModalFilename.textContent = fn;
+    }
+    setMsg(koboSubmitMsg, '', '');
+    if (koboSubmitPassword) koboSubmitPassword.value = '';
+    koboSubmitModalOverlay.style.display = 'flex';
+  }
+
+  function getKoboSelectedIndices() {
+    var out = [];
+    if (!koboSubmitRows) return out;
+    var checks = koboSubmitRows.querySelectorAll('input.kobo-row-check[data-row]');
+    checks.forEach(function (ch) {
+      if (!ch.checked) return;
+      var idx = parseInt(ch.getAttribute('data-row'), 10);
+      if (!isNaN(idx)) out.push(idx);
+    });
+    return out;
+  }
+
+  async function submitRowsToKoboFromModal() {
+    if (!sheetState || !sheetState.file) return;
+    if (koboSubmitBusy) return;
+    var editorName = getCurrentEditorName();
+    if (!editorName) {
+      setMsg(koboSubmitMsg, 'Escribe tu nombre para continuar.', 'error');
+      return;
+    }
+    var pwd = (koboSubmitPassword && koboSubmitPassword.value || '').trim();
+    if (!pwd) {
+      setMsg(koboSubmitMsg, 'Escribe la contraseña de autorización.', 'error');
+      if (koboSubmitPassword) koboSubmitPassword.focus();
+      return;
+    }
+    var selected = getKoboSelectedIndices();
+    var submitAll = !!(koboSubmitSelectAll && koboSubmitSelectAll.checked);
+    if (!submitAll && selected.length === 0) {
+      setMsg(koboSubmitMsg, 'Selecciona al menos una fila para enviar.', 'error');
+      return;
+    }
+    var sc = (sheetState.columnsCheck && sheetState.columnsCheck.simple_check) || null;
+    if (sc && !sc.ready_to_submit) {
+      var confirmMsg = 'Aún faltan correcciones en el archivo (columnas, filas incompletas o formatos).\n\n'
+        + 'Si envías ahora, algunas filas pueden fallar en Kobo.\n\n'
+        + '¿Deseas continuar de todas formas?';
+      if (!window.confirm(confirmMsg)) {
+        setMsg(koboSubmitMsg, 'Corrige los datos marcados en "Antes de enviar a Kobo" y vuelve a intentar.', 'info');
+        return;
+      }
+    }
+
+    koboSubmitBusy = true;
+    if (koboSubmitConfirm) koboSubmitConfirm.disabled = true;
+    setMsg(koboSubmitMsg, 'Enviando datos a Kobo…', 'info');
+    try {
+      var r = await fetch(u('api/files/' + sheetState.file.id + '/sheet/kobo-submit'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          editor_name: editorName,
+          password: pwd,
+          submit_all: submitAll,
+          row_indices: selected,
+          columns: sheetState.columns,
+          rows: sheetState.rows
+        })
+      });
+      var d = await r.json();
+      if (!d.ok && !d.partial) {
+        var detailErr = (d && d.error) || '';
+        if (!detailErr && d && d.message) detailErr = d.message;
+        if (!detailErr && d && d.errors && d.errors.length) {
+          detailErr = d.errors[0].error || '';
+        }
+        throw new Error(detailErr || 'No se pudo enviar a Kobo');
+      }
+      var msg = (d && d.message) ? d.message : ('Enviadas: ' + (d.sent || 0) + ' · Con error: ' + (d.failed || 0));
+      setMsg(koboSubmitMsg, msg, (d.failed ? 'info' : 'ok'));
+      setSheetMsg(msg, (d.failed ? 'info' : 'ok'));
+      if (!d.failed) {
+        setTimeout(closeKoboSubmitModal, 500);
+      }
+    } catch (e) {
+      setMsg(koboSubmitMsg, 'Error: ' + (e && e.message), 'error');
+    } finally {
+      koboSubmitBusy = false;
+      if (koboSubmitConfirm) koboSubmitConfirm.disabled = false;
+    }
+  }
+
+  if (sheetTableScroll) {
+    if (!sheetTableScroll._sheetInit) {
+      sheetTableScroll._sheetInit = true;
+      var resizeState = null;
+
+      sheetTableScroll.addEventListener('mousedown', function (e) {
+        var resizer = e.target && e.target.closest('.sheet-col-resizer');
+        if (resizer && sheetState) {
+          e.preventDefault();
+          var ci = parseInt(resizer.getAttribute('data-ci'), 10);
+          if (isNaN(ci)) return;
+          var th = resizer.closest('th');
+          resizeState = {
+            ci: ci,
+            startX: e.clientX,
+            startW: th ? th.getBoundingClientRect().width : 135
+          };
+          return;
+        }
+
+        var cell = e.target && e.target.closest('.sheet-cell');
+        if (cell && sheetState) {
+          var r = parseInt(cell.getAttribute('data-r'), 10);
+          var c = parseInt(cell.getAttribute('data-ci'), 10);
+          if (isNaN(r) || isNaN(c)) return;
+          if (e.shiftKey && sheetSelection) {
+            var s = normalizeSelection(sheetSelection);
+            setSelection(s.r1, s.c1, r, c);
+          } else {
+            setSelection(r, c, r, c);
+          }
+          sheetSelecting = true;
+          return;
+        }
+      });
+
+      sheetTableScroll.addEventListener('mousemove', function (e) {
+        if (!resizeState || !sheetState) return;
+        var next = resizeState.startW + (e.clientX - resizeState.startX);
+        lockColWidth(resizeState.ci, next);
+        renderSheetTable();
+      });
+
+      document.addEventListener('mouseup', function () {
+        if (resizeState) resizeState = null;
+        if (sheetSelecting) sheetSelecting = false;
+      });
+
+      sheetTableScroll.addEventListener('input', function (e) {
+        if (!e.target) return;
+        var el = e.target;
+        if (!el.classList || !el.classList.contains('sheet-cell') || !sheetState) return;
+        var ri = parseInt(el.getAttribute('data-r'), 10);
+        var ci = parseInt(el.getAttribute('data-ci'), 10);
+        if (isNaN(ri) || isNaN(ci) || !sheetState.columns[ci]) return;
+        if (!sheetState.rows[ri]) sheetState.rows[ri] = {};
+        var cname = sheetState.columns[ci];
+        sheetState.rows[ri][cname] = el.value;
+        var changedBySplit = applyDiagnosticoOtroSplitForRow(
+          sheetState.rows[ri],
+          sheetState.columns,
+          cname,
+          el.value
+        );
+        // Regla condicional: si "Se hizo referencia?" != Sí, limpiar "A dónde?".
+        var refCol = _pickColumnByAliases(sheetState.columns, ['Se hizo referencia', '¿Se hizo referencia?', 'Referencia']);
+        var whereCol = _pickColumnByAliases(sheetState.columns, ['A dónde', 'A donde', '¿A dónde?', 'Referencia_donde']);
+        if (refCol && whereCol && cname === refCol) {
+          var refNorm = normColName(el.value);
+          if (!(refNorm === 'si' || refNorm === 'sí')) {
+            sheetState.rows[ri][whereCol] = '';
+          }
+          renderSheetTable();
+        } else if (changedBySplit) {
+          renderSheetTable();
+        }
+        sheetDirty = true;
+      });
+
+      sheetTableScroll.addEventListener('focusin', function (e) {
+        var el = e.target;
+        if (!el || !el.classList || !el.classList.contains('sheet-cell')) return;
+        var r = parseInt(el.getAttribute('data-r'), 10);
+        var c = parseInt(el.getAttribute('data-ci'), 10);
+        if (isNaN(r) || isNaN(c)) return;
+        if (!e.shiftKey) setSelection(r, c, r, c);
+      });
+
+      sheetTableScroll.addEventListener('mouseover', function (e) {
+        if (!sheetSelecting || !sheetSelection || !sheetState) return;
+        var el = e.target && e.target.closest('.sheet-cell');
+        if (!el) return;
+        var r = parseInt(el.getAttribute('data-r'), 10);
+        var c = parseInt(el.getAttribute('data-ci'), 10);
+        var s = normalizeSelection(sheetSelection);
+        if (isNaN(r) || isNaN(c) || !s) return;
+        setSelection(s.r1, s.c1, r, c);
+      });
+
+      sheetTableScroll.addEventListener('keydown', function (e) {
+        if (!sheetState || !sheetOverlay || sheetOverlay.style.display === 'none') return;
+        var isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        var copyCombo = (isMac ? e.metaKey : e.ctrlKey) && (e.key === 'c' || e.key === 'C');
+        if (copyCombo && hasSelection()) {
+          e.preventDefault();
+          copySelectedToClipboard();
+          return;
+        }
+        if ((isMac ? e.metaKey : e.ctrlKey) && e.key === 'Enter' && hasSelection()) {
+          var t = e.target;
+          if (t && t.classList && t.classList.contains('sheet-cell')) {
+            e.preventDefault();
+            applySingleValueToSelection(t.value || '');
+            renderSheetTable();
+          }
+        }
+      });
+
+      sheetTableScroll.addEventListener('paste', function (e) {
+        if (!sheetState || !sheetOverlay || sheetOverlay.style.display === 'none') return;
+        var text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+        if (!text) return;
+        var matrix = parseClipboardTable(text);
+        if (!matrix.length) return;
+        e.preventDefault();
+        if (matrix.length === 1 && matrix[0].length === 1 && getSelectedCellCount() > 1) {
+          applySingleValueToSelection(matrix[0][0] || '');
+          renderSheetTable();
+          return;
+        }
+        if (!hasSelection()) {
+          var active = document.activeElement;
+          if (active && active.classList && active.classList.contains('sheet-cell')) {
+            var rr = parseInt(active.getAttribute('data-r'), 10);
+            var cc = parseInt(active.getAttribute('data-ci'), 10);
+            if (!isNaN(rr) && !isNaN(cc)) setSelection(rr, cc, rr, cc);
+          } else if (sheetState.rows.length > 0 && sheetState.columns.length > 0) {
+            setSelection(0, 0, 0, 0);
+          }
+        }
+        pasteMatrixAtSelection(matrix);
+        renderSheetTable();
+      });
+
+      sheetTableScroll.addEventListener('click', function (e) {
+        var t = e.target && (e.target.closest('button.sheet-btn-del-row') || (e.target.classList && e.target.classList.contains('sheet-btn-del-row') ? e.target : null));
+        if (t && sheetState) {
+          e.preventDefault();
+          var ri2 = parseInt(t.getAttribute('data-r'), 10);
+          if (isNaN(ri2)) return;
+          deleteRowAt(ri2);
+          return;
+        }
+
+        var th = e.target && e.target.closest('th.sheet-col-h');
+        if (th && sheetState) {
+          var cSel = parseInt(th.getAttribute('data-ci'), 10);
+          if (!isNaN(cSel) && sheetState.rows.length > 0) {
+            setSelection(0, cSel, sheetState.rows.length - 1, cSel);
+          }
+          return;
+        }
+
+        var rowH = e.target && e.target.closest('th.sheet-row-h');
+        if (rowH && sheetState) {
+          var rSel = parseInt(rowH.getAttribute('data-r'), 10);
+          if (!isNaN(rSel) && sheetState.columns.length > 0) {
+            setSelection(rSel, 0, rSel, sheetState.columns.length - 1);
+          }
+        }
+      });
+      sheetTableScroll.addEventListener('contextmenu', function (e) {
+        if (!sheetState || !sheetOverlay || sheetOverlay.style.display === 'none') return;
+        var cell = e.target && e.target.closest('.sheet-cell');
+        var colH = e.target && e.target.closest('th.sheet-col-h');
+        var rowH = e.target && e.target.closest('th.sheet-row-h');
+        if (!cell && !colH && !rowH) return;
+        e.preventDefault();
+        var ci = null;
+        var ri = null;
+        if (cell) {
+          ri = parseInt(cell.getAttribute('data-r'), 10);
+          ci = parseInt(cell.getAttribute('data-ci'), 10);
+          if (!isNaN(ri) && !isNaN(ci)) setSelection(ri, ci, ri, ci);
+        } else if (colH) {
+          ci = parseInt(colH.getAttribute('data-ci'), 10);
+          if (!isNaN(ci) && sheetState.rows.length > 0) setSelection(0, ci, sheetState.rows.length - 1, ci);
+        } else if (rowH) {
+          ri = parseInt(rowH.getAttribute('data-r'), 10);
+          if (!isNaN(ri) && sheetState.columns.length > 0) setSelection(ri, 0, ri, sheetState.columns.length - 1);
+        }
+        if (isNaN(ci)) ci = null;
+        if (isNaN(ri)) ri = null;
+        showSheetContextMenu(e.clientX, e.clientY, { ci: ci, ri: ri });
+      });
+      sheetTableScroll.addEventListener('blur', function (e) {
+        if (!e.target) return;
+        if (!e.target.classList || !e.target.classList.contains('sheet-header-input')) return;
+        onColumnHeaderBlur(e.target);
+      }, true);
+    }
+  }
+  if (sheetOriginalName) {
+    sheetOriginalName.addEventListener('input', function () { if (sheetState) sheetDirty = true; });
+  }
+  if (sheetNotes) {
+    sheetNotes.addEventListener('input', function () { if (sheetState) sheetDirty = true; });
+  }
+  if (sheetAddRow) {
+    sheetAddRow.addEventListener('click', function () {
+      if (!sheetState) return;
+      if (sheetState.columns.length === 0) {
+        setSheetMsg('Añada primero una columna (botón + Columna).', 'error');
+        return;
+      }
+      sheetState.rows.push(newEmptyRow());
+      sheetDirty = true;
+      renderSheetTable();
+    });
+  }
+  if (sheetAddCol) {
+    sheetAddCol.addEventListener('click', function () {
+      if (!sheetState) return;
+      var add = uniqueNewColumnName();
+      var oldCols = sheetState.columns.slice();
+      if (oldCols.length >= 200) {
+        setSheetMsg('Límite de 200 columnas. Divida el archivo o use otra hoja.', 'error');
+        return;
+      }
+      sheetState.columns.push(add);
+      sheetState.rows.forEach(function (r) { if (r) r[add] = ''; });
+      if (oldCols.length === 0) {
+        if (sheetState.rows.length === 0) {
+          var nr = newEmptyRow();
+          sheetState.rows = [nr];
+        }
+      }
+      sheetDirty = true;
+      renderSheetTable();
+    });
+  }
+  if (sheetColRemoveGo) {
+    sheetColRemoveGo.addEventListener('click', function () {
+      if (!sheetState || !sheetColRemove) return;
+      var idx = parseInt(sheetColRemove.value, 10);
+      if (isNaN(idx) || idx < 0 || idx >= sheetState.columns.length) { setSheetMsg('Seleccione qué columna quitar (lista desplegable).', 'error'); return; }
+      deleteColumnAt(idx);
+    });
+  }
+  if (sheetSave) {
+    sheetSave.addEventListener('click', function () { saveSheetAll(); });
+  }
+  if (sheetOpenGuide) {
+    sheetOpenGuide.addEventListener('click', function () {
+      if (!sheetState) return;
+      startSheetGuide();
+    });
+  }
+  if (sheetSubmitKobo) {
+    sheetSubmitKobo.addEventListener('click', function () {
+      if (!sheetState) return;
+      openKoboSubmitModal();
+    });
+  }
+  if (sheetApplySuggestions) {
+    sheetApplySuggestions.addEventListener('click', function () {
+      if (!sheetState || !sheetState.columnsCheck) return;
+      var sugg = sheetState.columnsCheck.rename_suggestions || {};
+      var keys = Object.keys(sugg);
+      if (!keys.length) return;
+      var renamed = 0;
+      for (var i = 0; i < sheetState.columns.length; i += 1) {
+        var current = sheetState.columns[i];
+        var target = sugg[current];
+        if (!target) continue;
+        var unique = colNameAtIndexUnique(target, i);
+        if (!unique || unique === current) continue;
+        var oldName = sheetState.columns[i];
+        sheetState.columns[i] = unique;
+        sheetState.rows.forEach(function (row) {
+          if (!row) return;
+          row[unique] = (row[oldName] != null && row[oldName] !== undefined) ? String(row[oldName]) : '';
+          if (oldName !== unique) delete row[oldName];
+        });
+        renamed += 1;
+      }
+      if (renamed > 0) {
+        sheetDirty = true;
+        setSheetMsg('Se aplicaron ' + renamed + ' sugerencias de nombres Kobo.', 'ok');
+        renderSheetTable();
+      } else {
+        setSheetMsg('No hubo sugerencias aplicables.', 'info');
+      }
+    });
+  }
+  if (sheetMarkEditedValidated) {
+    sheetMarkEditedValidated.addEventListener('click', async function () {
+      if (!sheetState || !sheetState.file) return;
+      var editorName = getCurrentEditorName();
+      if (!editorName) {
+        alert('Escribe tu nombre para marcar Editado Validado.');
+        if (inputName) inputName.focus();
+        return;
+      }
+      var nextState = !sheetState.file.edited_validated;
+      sheetMarkEditedValidated.disabled = true;
+      try {
+        var r = await fetch(u('api/files/' + sheetState.file.id + '/edited-validated'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ edited_validated: nextState, editor_name: editorName })
+        });
+        var d = await r.json();
+        if (!d.ok) throw new Error(d.error || 'No se pudo actualizar el estado.');
+        if (d.file) sheetState.file = d.file;
+        updateEditedValidatedButton();
+        setSheetMsg(nextState ? 'Archivo marcado como Editado Validado.' : 'Marca Editado Validado removida.', 'ok');
+        await loadFiles();
+      } catch (e) {
+        setSheetMsg('Error: ' + (e && e.message), 'error');
+      } finally {
+        sheetMarkEditedValidated.disabled = false;
+      }
+    });
+  }
+  if (sheetClose) {
+    sheetClose.addEventListener('click', function () { closeSheetEditor(); });
+  }
+  if (sheetOpenMetaOnly) {
+    sheetOpenMetaOnly.addEventListener('click', function () {
+      if (!sheetState) return;
+      var fid = sheetState.file && sheetState.file.id;
+      if (sheetDirty) {
+        if (!confirm('Los datos de la hoja no se han guardado. ¿Cerrar el editor y abrir solo nota, nombre e información?')) return;
+      }
+      closeSheetEditor(true);
+      setTimeout(function () { openEditModal(String(fid)); }, 100);
+    });
+  }
+  if (sheetOverlay) {
+    sheetOverlay.addEventListener('click', function (e) {
+      if (e.target === sheetOverlay) closeSheetEditor();
+      else hideSheetContextMenu();
+    });
+  }
+  if (koboSubmitSelectAll) {
+    koboSubmitSelectAll.addEventListener('change', function () {
+      if (!koboSubmitRows) return;
+      var checks = koboSubmitRows.querySelectorAll('input.kobo-row-check');
+      checks.forEach(function (ch) { ch.checked = !!koboSubmitSelectAll.checked; });
+    });
+  }
+  if (koboSubmitCancel) {
+    koboSubmitCancel.addEventListener('click', closeKoboSubmitModal);
+  }
+  if (koboSubmitConfirm) {
+    koboSubmitConfirm.addEventListener('click', function () { submitRowsToKoboFromModal(); });
+  }
+  if (koboSubmitModalOverlay) {
+    koboSubmitModalOverlay.addEventListener('click', function (e) {
+      if (e.target === koboSubmitModalOverlay) closeKoboSubmitModal();
+    });
+  }
+  document.addEventListener('click', function (e) {
+    if (!sheetContextMenuEl || sheetContextMenuEl.style.display === 'none') return;
+    if (e.target && e.target.closest && e.target.closest('#sheetContextMenu')) return;
+    hideSheetContextMenu();
+  });
+  window.addEventListener('resize', hideSheetContextMenu);
+  window.addEventListener('scroll', hideSheetContextMenu, true);
+  document.addEventListener('keydown', function (e) {
+    if (sheetGuide && sheetGuide.active && e.key === 'Escape') {
+      e.preventDefault();
+      stopSheetGuide(true);
+      return;
+    }
+    if (koboSubmitModalOverlay && koboSubmitModalOverlay.style.display !== 'none' && e.key === 'Escape') {
+      e.preventDefault();
+      closeKoboSubmitModal();
+      return;
+    }
+    if (!sheetOverlay || sheetOverlay.style.display === 'none' || e.key !== 'Escape') return;
+    e.preventDefault();
+    hideSheetContextMenu();
+    closeSheetEditor();
+  }, true);
+  window.addEventListener('beforeunload', function () {
+    releaseSheetLock(true);
+  });
+  window.addEventListener('pagehide', function () {
+    releaseSheetLock(true);
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') releaseSheetLock(true);
+  });
+
+  function closeEditModal() {
+    pendingEditFile = null;
+    if (editModalOverlay) editModalOverlay.style.display = 'none';
+    if (editModalFilename) editModalFilename.textContent = '';
+    if (editModalOriginalName) editModalOriginalName.value = '';
+    if (editModalUploadedBy) editModalUploadedBy.value = '';
+    if (editModalNotes) editModalNotes.value = '';
+    if (editModalConfirm) editModalConfirm.disabled = false;
+    setMsg(editModalMsg, '');
+  }
+
+  function openEditModal(id) {
+    var fid = parseInt(id, 10);
+    if (isNaN(fid)) return;
+    var file = filesCache.find(function (f) { return f.id === fid; });
+    if (!file) return;
+    pendingEditFile = file;
+    if (editModalFilename) {
+      editModalFilename.textContent = (file.original_name || file.stored_name || '');
+    }
+    if (editModalOriginalName) editModalOriginalName.value = file.original_name || file.stored_name || '';
+    if (editModalUploadedBy) editModalUploadedBy.value = file.uploaded_by || '';
+    if (editModalNotes) editModalNotes.value = file.notes || '';
+    setMsg(editModalMsg, '');
+    if (editModalOverlay) editModalOverlay.style.display = 'flex';
+    if (editModalOriginalName) editModalOriginalName.focus();
+  }
+
+  if (editModalCancel) editModalCancel.addEventListener('click', closeEditModal);
+  if (editModalOverlay) {
+    editModalOverlay.addEventListener('click', function (e) {
+      if (e.target === editModalOverlay) closeEditModal();
+    });
+  }
+  if (editModalConfirm) {
+    editModalConfirm.addEventListener('click', async function () {
+      if (!pendingEditFile) return;
+      var originalName = (editModalOriginalName && editModalOriginalName.value || '').trim();
+      var uploadedBy = (editModalUploadedBy && editModalUploadedBy.value || '').trim();
+      var notes = (editModalNotes && editModalNotes.value || '').trim();
+      if (!originalName) {
+        setMsg(editModalMsg, 'El nombre del archivo es obligatorio.', 'error');
+        if (editModalOriginalName) editModalOriginalName.focus();
+        return;
+      }
+      editModalConfirm.disabled = true;
+      setMsg(editModalMsg, 'Guardando cambios...', 'info');
+      try {
+        var r = await fetch(u('api/files/' + pendingEditFile.id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            original_name: originalName,
+            uploaded_by: uploadedBy,
+            notes: notes
+          }),
+        });
+        var data = await r.json();
+        if (!data.ok) throw new Error(data.error || 'No se pudo editar');
+        setMsg(uploadMsg, 'Archivo actualizado correctamente.', 'ok');
+        closeEditModal();
+        await loadFiles();
+      } catch (e) {
+        setMsg(editModalMsg, 'Error: ' + e.message, 'error');
+      } finally {
+        if (editModalConfirm) editModalConfirm.disabled = false;
+      }
+    });
   }
 
   // Modal descargar
@@ -1017,7 +3020,7 @@
     dlModalConfirm.disabled = true;
 
     try {
-      await fetch('api/files/' + pendingDownload.id + '/register-download', {
+      await fetch(u('api/files/' + pendingDownload.id + '/register-download'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ downloaded_by: dlName }),
@@ -1178,7 +3181,7 @@
 
     // Asegurar que tenemos datos frescos del servidor
     try {
-      var rr = await fetch('api/refs');
+      var rr = await fetch(u('api/refs'));
       var dd = await rr.json();
       if (dd.ok) refsCache = dd.refs || [];
     } catch (e) { /* usar cache existente */ }
@@ -1438,7 +3441,7 @@
         reject(new Error('Subida cancelada'));
       });
 
-      xhr.open('POST', 'api/refs');
+      xhr.open('POST', u('api/refs'));
       xhr.send(fd);
     });
   }
@@ -1448,7 +3451,7 @@
 
     for (var d = 0; d < idsToDelete.length; d++) {
       try {
-        await fetch('api/refs/' + idsToDelete[d], { method: 'DELETE' });
+        await fetch(u('api/refs/' + idsToDelete[d]), { method: 'DELETE' });
       } catch (e) { /* continuar */ }
     }
 
@@ -1514,7 +3517,7 @@
 
   async function loadRefs() {
     try {
-      var r = await fetch('api/refs');
+      var r = await fetch(u('api/refs'));
       var data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Error');
       refsCache = data.refs || [];
@@ -1527,7 +3530,7 @@
 
   async function updateLocationTabs() {
     try {
-      var r = await fetch('api/refs/locations');
+      var r = await fetch(u('api/refs/locations'));
       var data = await r.json();
       var locations = (data.ok && data.locations) || [];
 
@@ -1570,7 +3573,7 @@
 
     refsList.innerHTML = filtered.map(function (r) {
       var actions = '';
-      actions += '<a class="btn btn-outline btn-sm" href="' + (r.download_url || '') + '" download>' +
+      actions += '<a class="btn btn-outline btn-sm" href="' + u(r.download_url || ('api/refs/' + r.id + '/download')) + '" download>' +
         '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Descargar</a>';
       actions += '<button class="btn btn-outline-red btn-sm js-ref-delete" data-id="' + r.id + '">' +
         '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>';
@@ -1601,7 +3604,7 @@
     var id = dBtn.getAttribute('data-id');
     if (!confirm('¿Eliminar este PDF de referencia?')) return;
     try {
-      var r = await fetch('api/refs/' + id, { method: 'DELETE' });
+      var r = await fetch(u('api/refs/' + id), { method: 'DELETE' });
       var data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Error');
       await loadRefs();
@@ -1670,7 +3673,7 @@
         avatarClass = 'rank-avatar rank-avatar-last';
         countClass = 'rank-count-number rank-count-number-last';
         barClass = 'rank-bar-fill rank-bar-last';
-        positionHtml = '<div class="rank-position">\uD83D\uDCA9</div>';
+        positionHtml = '<div class="rank-position">\uD83D\uDCAA</div>';
       } else {
         positionHtml = '<div class="rank-position"><div class="rank-position-number">' + pos + '</div></div>';
       }
@@ -1679,7 +3682,7 @@
       if (medal) {
         badgeHtml = '<span class="rank-badge rank-badge-' + medal.badge + '">' + medal.emoji + ' ' + medal.label + '</span>';
       } else if (isLast) {
-        badgeHtml = '<span class="rank-badge rank-badge-last">\uD83D\uDCA9 Ultimo lugar</span>';
+        badgeHtml = '<span class="rank-badge rank-badge-last">\uD83D\uDCAA \u00A1T\u00FA puedes!</span>';
       }
 
       var barWidth = Math.round((item.count / maxCount) * 100);
@@ -1707,7 +3710,7 @@
 
   async function loadRanking() {
     try {
-      var r = await fetch('api/stats/ranking');
+      var r = await fetch(u('api/stats/ranking'));
       var data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Error');
       renderRankingList(rankingList, data.validators || [], 'validados');
@@ -1717,6 +3720,52 @@
         rankingList.innerHTML = '<div class="empty-state"><p>Error al cargar ranking</p><span>' + esc(e.message) + '</span></div>';
       }
     }
+  }
+
+  /* ═══════════════ BITÁCORA KOBO ═══════════════ */
+
+  function renderKoboSubmissionLogs(logs) {
+    if (!koboLogsTableBody) return;
+    if (!logs || !logs.length) {
+      koboLogsTableBody.innerHTML = '<tr><td colspan="7">Sin registros todavía.</td></tr>';
+      return;
+    }
+    koboLogsTableBody.innerHTML = logs.map(function (row) {
+      var failed = Number(row.failed_count || 0);
+      var sent = Number(row.sent_count || 0);
+      var status = failed > 0 ? 'Con errores' : (sent > 0 ? 'Completado' : 'Sin envío');
+      return '<tr>'
+        + '<td>' + esc(fmtDate(row.submitted_at) || '—') + '</td>'
+        + '<td>' + esc(row.submitted_by || '—') + '</td>'
+        + '<td>' + esc(row.file_name || ('#' + (row.file_id || '—'))) + '</td>'
+        + '<td>' + esc(String(row.selected_total == null ? '0' : row.selected_total)) + '</td>'
+        + '<td>' + esc(String(sent)) + '</td>'
+        + '<td>' + esc(String(failed)) + '</td>'
+        + '<td>' + esc(status) + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  async function loadKoboSubmissionLogs() {
+    if (koboLogsTableBody) {
+      koboLogsTableBody.innerHTML = '<tr><td colspan="7">Cargando bitácora…</td></tr>';
+    }
+    try {
+      var r = await fetch(u('api/kobo-submissions/logs?limit=120'));
+      var d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'No se pudo cargar la bitácora');
+      renderKoboSubmissionLogs(d.logs || []);
+    } catch (e) {
+      if (koboLogsTableBody) {
+        koboLogsTableBody.innerHTML = '<tr><td colspan="7">Error al cargar bitácora: ' + esc(e.message || '') + '</td></tr>';
+      }
+    }
+  }
+
+  if (btnKoboLogsRefresh) {
+    btnKoboLogsRefresh.addEventListener('click', function () {
+      loadKoboSubmissionLogs();
+    });
   }
 
   /* ═══════════════ INICIO ═══════════════ */

@@ -23,6 +23,7 @@
   const btnSkipRow = document.getElementById('btnSkipRow');
   const progressActionsEl = document.getElementById('progressActions');
   const validationSummaryEl = document.getElementById('validationSummary');
+  const validationDetailEl = document.getElementById('validationDetail');
   const pdfDataTableEl = document.getElementById('pdfDataTable');
   const btnDownloadExtracted = document.getElementById('btnDownloadExtracted');
 
@@ -53,11 +54,21 @@
   const historialArchivos = document.getElementById('historialArchivos');
   
   const kpiSummaryEl = document.getElementById('kpiSummary');
-  const kpiArchivosEl = document.getElementById('kpiArchivos');
-  const kpiFilasEl = document.getElementById('kpiFilas');
+  const kpiPatientsEl = document.getElementById('kpiPatients');
+  const kpiConsultasEl = document.getElementById('kpiConsultas');
+  const kpiSpecialtiesEl = document.getElementById('kpiSpecialties');
+  const kpiSuppliesEl = document.getElementById('kpiSupplies');
 
   const summaryArchivosEl = document.getElementById('summaryArchivos');
   const summaryRegistrosEl = document.getElementById('summaryRegistros');
+
+  // KoboUp queue
+  const btnLoadKoboup = document.getElementById('btnLoadKoboup');
+  const koboupStatus = document.getElementById('koboupStatus');
+  const koboupListEl = document.getElementById('koboupList');
+  const koboupListBody = document.getElementById('koboupListBody');
+  const koboupEmpty = document.getElementById('koboupEmpty');
+  const crossValidationPanel = document.getElementById('crossValidationPanel');
 
   // Filebox (gestión simple de archivos)
   const fileBoxInput = document.getElementById('fileBoxInput');
@@ -77,10 +88,15 @@
 
   let uploadedFilename = null;
   let uploadedFileType = null;
+  let uploadedOriginalName = null;
+  let koboupFiles = [];
+  let activeKoboupFileId = null;
   let extractedRecords = [];
   let pdfExtractedRecords = [];
   // true cuando el servidor indica que no pudo determinar coords automáticamente
   let coordsRequired = false;
+  let lastValidation = null;
+  let lastAlreadySubmitted = [];
 
   if (btnDownloadExtracted) {
     btnDownloadExtracted.style.display = 'none';
@@ -176,7 +192,7 @@
     btnStop.style.display = running ? '' : 'none';
     btnStart.disabled = running;
     if (!running) {
-      btnStart.disabled = !(uploadedFilename && mappingStatusEl.classList.contains('ok'));
+      updateStartButton();
     }
     if (!running && progressActionsEl) {
       // Mostrar botón de descarga si hubo errores
@@ -209,6 +225,7 @@
       if (data.use_kobo_api && document.getElementById('chkUsarApi')) document.getElementById('chkUsarApi').checked = true;
       uploadedFilename = null;
       uploadedFileType = null;
+      uploadedOriginalName = null;
       uploadedFileEl.textContent = '';
       verifySectionEl.style.display = 'none';
       dataTableEl.innerHTML = '';
@@ -248,13 +265,32 @@
   function updateStartButton() {
     const hasMapping = mappingStatusEl.classList.contains('ok');
     const hasFile = !!uploadedFilename;
+    const estado = (document.getElementById('inputEstadoBrigada') || {}).value || '';
+    const lugar  = (inputLugar ? inputLugar.value : '').trim();
     const lat = (inputLatitud && inputLatitud.value || '').trim();
     const lon = (inputLongitud && inputLongitud.value || '').trim();
-    const hasCoords = !!(lat && lon);
-    const coordsMissing = coordsRequired && !hasCoords;
-    btnStart.disabled = !hasFile || !hasMapping || coordsMissing;
-    if (coordsMissing) {
-      setCoordsHint('Coordenadas obligatorias: ingresa Latitud y Longitud antes de iniciar.', 'error');
+    const allLocationFilled = !!(estado.trim() && lugar && lat && lon);
+    btnStart.disabled = !hasFile || !hasMapping || !allLocationFilled;
+
+    var reasons = [];
+    if (!hasFile) reasons.push('No se ha cargado un archivo Excel');
+    if (!hasMapping) reasons.push('El mapeo de columnas no está configurado');
+    if (!estado.trim()) reasons.push('Falta: Estado de la brigada');
+    if (!lugar) reasons.push('Falta: Lugar (colegio/comunidad)');
+    if (!lat) reasons.push('Falta: Latitud');
+    if (!lon) reasons.push('Falta: Longitud');
+
+    var wrapper = document.getElementById('btnStartWrapper');
+    if (reasons.length > 0) {
+      var tooltipText = 'No se puede iniciar:\n• ' + reasons.join('\n• ');
+      if (wrapper) wrapper.setAttribute('data-tooltip', tooltipText);
+      var locationMissing = reasons.filter(function(r) { return r.startsWith('Falta:'); });
+      if (locationMissing.length > 0) {
+        setCoordsHint('Completa: ' + locationMissing.map(function(r) { return r.replace('Falta: ', ''); }).join(', ') + ' antes de iniciar la carga.', 'error');
+      }
+    } else {
+      if (wrapper) wrapper.setAttribute('data-tooltip', 'Todo listo. Haz clic para iniciar el llenado automático.');
+      setCoordsHint('Datos de ubicación completos. Puedes iniciar la carga.', 'info');
     }
   }
 
@@ -311,6 +347,28 @@
   }
   if (inputLatitud) inputLatitud.addEventListener('input', onCoordsInput);
   if (inputLongitud) inputLongitud.addEventListener('input', onCoordsInput);
+  var _inputEstBrig = document.getElementById('inputEstadoBrigada');
+  if (_inputEstBrig) _inputEstBrig.addEventListener('input', function() { updateStartButton(); });
+  if (inputLugar) inputLugar.addEventListener('input', function() { updateStartButton(); });
+
+  var btnStartWrapper = document.getElementById('btnStartWrapper');
+  if (btnStartWrapper) {
+    btnStartWrapper.addEventListener('click', function(e) {
+      if (!btnStart.disabled) return;
+      var tooltip = btnStartWrapper.getAttribute('data-tooltip') || '';
+      if (tooltip) {
+        alert(tooltip.replace(/\n/g, '\n'));
+        var firstMissing = document.getElementById('inputEstadoBrigada');
+        if (firstMissing && !firstMissing.value.trim()) { firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' }); firstMissing.focus(); return; }
+        firstMissing = document.getElementById('inputLugar');
+        if (firstMissing && !firstMissing.value.trim()) { firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' }); firstMissing.focus(); return; }
+        firstMissing = document.getElementById('inputLatitud');
+        if (firstMissing && !firstMissing.value) { firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' }); firstMissing.focus(); return; }
+        firstMissing = document.getElementById('inputLongitud');
+        if (firstMissing && !firstMissing.value) { firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' }); firstMissing.focus(); return; }
+      }
+    });
+  }
 
   // ── Tabla de verificación ───────────────────────────────────────────────────
 
@@ -329,7 +387,53 @@
     NAT: 'Nacionalidad', lat: 'Latitud', long: 'Longitud', alt: 'Altitud (m)', acc: 'Precisión (m)',
     ME_ML: '¿Embarazada / Lactancia?',
     Unidades_entregadas: 'Unidades entregadas',
-    Especifique_qu_se_entrega: 'Especifica qué se entrega'
+    Especifique_qu_se_entrega: 'Especifica qué se entrega',
+    CONS1: 'Consentimiento inicial',
+    NATOT: 'Nacionalidad (especificar)',
+    Especificar_Minor_a_tnica: 'Especificar minoría étnica',
+    estatus_migra: 'Estatus migratorio',
+    AGEMO: 'Edad en meses',
+    IMC: 'IMC',
+    Pesoprepreg: 'Peso pre gestacional',
+    SDG: 'Semanas de gestación',
+    BCS: 'Lugar BCS',
+    CHIH: 'Lugar Chihuahua',
+    Lugar_de_Atenci_n_Baja_Califo: 'Lugar Baja California',
+    Lugar_de_Atenci_n_Nuevo_Le_n: 'Lugar Nuevo León',
+    Lugar_de_Atenci_n_Sonora: 'Lugar Sonora',
+    SCH: 'Lugar Escuelas',
+    PLACE: 'Especificar colegio/comunidad',
+    OTH: 'Especificar lugar (otro)',
+    Diagn_stico_001: 'Diagnóstico Odontología',
+    Especificar_002: 'Especificar diagnóstico odontología',
+    _Se_realiza_procedimiento_odon: '¿Se realiza procedimiento odontológico?',
+    _Qupe_procedimiento_se_realiza: 'Procedimiento odontológico',
+    Especificar_003: 'Especificar procedimiento odontológico',
+    S_ntomas_que_presenta_a_la_fec: 'Síntomas oftalmología',
+    Especifique_s_ntoma: 'Especificar síntoma',
+    _Ha_recibido_alg_n_diagn_stico: 'Diagnóstico previo oftalmología',
+    Especifique_diagn_stico_previo: 'Especificar diagnóstico previo',
+    Diagn_stico_002: 'Diagnóstico actual oftalmología',
+    Otro_diagn_stico: 'Otro diagnóstico oftalmología',
+    _Requiere_anteojos: '¿Requiere anteojos?',
+    REF: '¿Se hizo referencia?',
+    REFORG: '¿A dónde?',
+    REFSPEC: 'Especificar referencia',
+    MEDREF: 'Motivo de referencia',
+    SPREFMOTMED: 'Especificar motivo referencia',
+    DIS: 'Discapacidad',
+    Especificar_discapacidad: 'Especificar discapacidad',
+    DX: 'Diagnósticos medicina general',
+    dxesp: 'Especificar diagnóstico',
+    Localizaci_n_de_la_lesi_n: 'Localización lesión',
+    Especificar_001: 'Especificar localización',
+    FE: 'Suplemento hierro',
+    FA: 'Suplemento ácido fólico',
+    Fotograf_a_de_la_Rec_Acuse_de_recibi_etc: 'Foto receta/acuse',
+    CONS: 'Consentimiento informado verbal',
+    ASESPREV: 'Asesoría previa en módulos',
+    POC: 'Estado brigada (POC)',
+    Ubicaci_n_geogr_fica_de_la_atenci_n: 'Ubicación geográfica'
   };
 
   var COLUMN_SELECT_OPTIONS = {
@@ -346,6 +450,234 @@
     return (s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
+  var ALWAYS_VISIBLE_COLUMNS = [
+    'Fecha_de_atenci_n', 'CONS1', 'Modalidad_de_la_atenci_n', 'POC',
+    'BCS', 'CHIH', 'Lugar_de_Atenci_n_Sonora', 'Lugar_de_Atenci_n_Baja_Califo',
+    'Lugar_de_Atenci_n_Nuevo_Le_n', 'SCH', 'PLACE', 'OTH',
+    'Ubicaci_n_geogr_fica_de_la_atenci_n',
+    'followup', 'ASESPREV', 'Servicio_que_se_brinda',
+    'NAME', 'NAT', 'NATOT', 'Estado', '_Pertenece_a_alguna_minor_a_t',
+    'Especificar_Minor_a_tnica', 'estatus_migra', 'SEX', 'DOB', 'ME_ML',
+    'AGE', 'AGEMO', 'HEI', 'WEI', 'IMC', 'Pesoprepreg', 'SDG', 'HPI',
+    'DIS', 'Especificar_discapacidad', 'DX', 'dxesp',
+    'Diagn_stico', 'Especificar', 'Localizaci_n_de_la_lesi_n', 'Especificar_001',
+    'Diagn_stico_001', 'Especificar_002',
+    'S_ntomas_que_presenta_a_la_fec', 'Especifique_s_ntoma',
+    '_Ha_recibido_alg_n_diagn_stico', 'Especifique_diagn_stico_previo',
+    'Diagn_stico_002', 'Otro_diagn_stico',
+    '_Se_realiza_procedimiento_odon', '_Qupe_procedimiento_se_realiza', 'Especificar_003',
+    'entrega_tx', 'TX', '_Requiere_anteojos', 'Especifique_qu_se_entrega',
+    'Especificar_lo_que_se_entrega_', 'FE', 'FA', 'Unidades_entregadas',
+    'Plan_de_Tratamiento', 'Fotograf_a_de_la_Rec_Acuse_de_recibi_etc',
+    'REF', 'REFORG', 'REFSPEC', 'MEDREF', 'SPREFMOTMED',
+    'CONS', 'CGR'
+  ];
+
+  var FIELD_ALIASES = {
+    CONS1: { '1': ['1', 'si', 'sí', 'yes'] },
+    NAT: { '1': ['1', 'mexico', 'méxico'], '14': ['14', 'otro'] },
+    _Pertenece_a_alguna_minor_a_t: { si: ['si', 'sí', '1'] },
+    SEX: { '2': ['2', 'femenino', 'female', 'f', 'mujer'] },
+    ME_ML: {
+      '1': ['1', 'embarazada', 'embarazo'],
+      '2_1': ['2_1', 'lactancia', 'lactante'],
+      '0': ['0', 'no aplica', 'na', 'n/a']
+    },
+    POC: {
+      '1': ['1', 'baja california sur', 'baja californa sur', 'bcs'],
+      '2': ['2', 'chihuahua'],
+      '3': ['3', 'sonora'],
+      '4': ['4', 'otro'],
+      baja_california: ['baja_california', 'baja california'],
+      nuevo_le_n: ['nuevo_le_n', 'nuevo leon', 'nuevo león']
+    },
+    BCS: { '4': ['4', 'otro'] },
+    CHIH: { '2': ['2', 'otro'] },
+    Lugar_de_Atenci_n_Sonora: { '2': ['2', 'otro'] },
+    Lugar_de_Atenci_n_Baja_Califo: { otro: ['otro'] },
+    Lugar_de_Atenci_n_Nuevo_Le_n: { otro: ['otro'] },
+    SCH: {
+      '1': ['1', 'escuela nivel primaria'],
+      '2': ['2', 'escuela nivel secundaria'],
+      '3': ['3', 'bachillerato'],
+      '4': ['4', 'otro']
+    },
+    Modalidad_de_la_atenci_n: {
+      '1': ['1', 'movil', 'móvil'],
+      escuelas: ['escuelas']
+    },
+    Servicio_que_se_brinda: {
+      '1': ['1', 'medicina general'],
+      '2': ['2', 'dental', 'odontologia', 'odontología'],
+      '3': ['3', 'fisioterapia'],
+      '4': ['4', 'oftalmologia', 'oftalmología'],
+      laboratorios: ['laboratorios', 'laboratorio', 'lab']
+    },
+    _Se_realiza_procedimiento_odon: { Yes: ['yes', 'si', 'sí', '1'] },
+    _Qupe_procedimiento_se_realiza: { '6': ['6', 'otro'] },
+    entrega_tx: { Yes: ['yes', 'si', 'sí', '1'] },
+    Especifique_qu_se_entrega: { otro: ['otro'] },
+    DIS: { '5': ['5', 'otra', 'otro'] },
+    DX: { '22': ['22', 'otro'] },
+    Diagn_stico: { '3': ['3', 'lesiones musculoesqueleticas', 'lesiones musculoesqueléticas'], '7': ['7', 'otro'] },
+    Localizaci_n_de_la_lesi_n: { '0': ['0', 'otro'] },
+    Diagn_stico_001: { '9': ['9', 'otro'] },
+    S_ntomas_que_presenta_a_la_fec: { otro: ['otro'] },
+    _Ha_recibido_alg_n_diagn_stico: { otro: ['otro'] },
+    Diagn_stico_002: { otro: ['otro'] },
+    REF: { Yes: ['yes', 'si', 'sí', '1'] },
+    MEDREF: { '0': ['0', 'otro'] }
+  };
+
+  function splitMulti(raw) {
+    if (raw == null) return [];
+    return String(raw)
+      .split(/\|\|\||,|;/)
+      .map(function (p) { return normText(p); })
+      .filter(Boolean);
+  }
+
+  function valueMatches(field, rawValue, expected) {
+    var aliases = ((FIELD_ALIASES[field] || {})[expected] || [expected]).map(normText);
+    var tokens = splitMulti(rawValue);
+    if (tokens.length === 0) tokens = [normText(rawValue)];
+    return aliases.some(function (a) {
+      return tokens.some(function (t) { return t === a; });
+    });
+  }
+
+  function selectedIncludes(field, rawValue, expected) {
+    return valueMatches(field, rawValue, expected);
+  }
+
+  function getRowRecord(tr) {
+    var rec = {};
+    tr.querySelectorAll('input[data-col], select[data-col], textarea[data-col]').forEach(function (el) {
+      var col = el.getAttribute('data-col');
+      if (!col) return;
+      rec[col] = el.value;
+    });
+    return rec;
+  }
+
+  var FIELD_RULES = {
+    NAME: function (rec) { return valueMatches('CONS1', rec.CONS1, '1'); },
+    NATOT: function (rec) { return valueMatches('NAT', rec.NAT, '14'); },
+    Estado: function (rec) { return valueMatches('NAT', rec.NAT, '1'); },
+    _Pertenece_a_alguna_minor_a_t: function (rec) { return valueMatches('NAT', rec.NAT, '1'); },
+    Especificar_Minor_a_tnica: function (rec) { return valueMatches('_Pertenece_a_alguna_minor_a_t', rec._Pertenece_a_alguna_minor_a_t, 'si'); },
+    estatus_migra: function (rec) { return !valueMatches('NAT', rec.NAT, '1'); },
+    ME_ML: function (rec) { return valueMatches('SEX', rec.SEX, '2'); },
+    AGEMO: function (rec) { return Number(rec.AGE || 0) < 2; },
+    IMC: function (rec) { return Number(rec.AGE || 0) > 17; },
+    Pesoprepreg: function (rec) { return valueMatches('ME_ML', rec.ME_ML, '1'); },
+    SDG: function (rec) { return valueMatches('ME_ML', rec.ME_ML, '1'); },
+    BCS: function (rec) { return valueMatches('POC', rec.POC, '1'); },
+    CHIH: function (rec) { return valueMatches('POC', rec.POC, '2'); },
+    Lugar_de_Atenci_n_Sonora: function (rec) { return valueMatches('POC', rec.POC, '3'); },
+    Lugar_de_Atenci_n_Baja_Califo: function (rec) { return valueMatches('POC', rec.POC, 'baja_california'); },
+    Lugar_de_Atenci_n_Nuevo_Le_n: function (rec) { return valueMatches('POC', rec.POC, 'nuevo_le_n'); },
+    SCH: function (rec) { return valueMatches('Modalidad_de_la_atenci_n', rec.Modalidad_de_la_atenci_n, 'escuelas'); },
+    PLACE: function (rec) {
+      return valueMatches('SCH', rec.SCH, '1')
+        || valueMatches('SCH', rec.SCH, '2')
+        || valueMatches('SCH', rec.SCH, '3')
+        || valueMatches('Modalidad_de_la_atenci_n', rec.Modalidad_de_la_atenci_n, '1');
+    },
+    OTH: function (rec) {
+      return valueMatches('POC', rec.POC, '4')
+        || valueMatches('BCS', rec.BCS, '4')
+        || valueMatches('CHIH', rec.CHIH, '2')
+        || valueMatches('Lugar_de_Atenci_n_Sonora', rec.Lugar_de_Atenci_n_Sonora, '2')
+        || valueMatches('SCH', rec.SCH, '4')
+        || valueMatches('Lugar_de_Atenci_n_Baja_Califo', rec.Lugar_de_Atenci_n_Baja_Califo, 'otro')
+        || valueMatches('Lugar_de_Atenci_n_Nuevo_Le_n', rec.Lugar_de_Atenci_n_Nuevo_Le_n, 'otro');
+    },
+    DIS: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '1'); },
+    Especificar_discapacidad: function (rec) { return selectedIncludes('DIS', rec.DIS, '5'); },
+    DX: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '1'); },
+    dxesp: function (rec) { return selectedIncludes('DX', rec.DX, '22'); },
+    Diagn_stico: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '3'); },
+    Especificar: function (rec) { return selectedIncludes('Diagn_stico', rec.Diagn_stico, '7'); },
+    Localizaci_n_de_la_lesi_n: function (rec) { return selectedIncludes('Diagn_stico', rec.Diagn_stico, '3'); },
+    Especificar_001: function (rec) { return selectedIncludes('Localizaci_n_de_la_lesi_n', rec.Localizaci_n_de_la_lesi_n, '0'); },
+    Diagn_stico_001: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '2'); },
+    Especificar_002: function (rec) { return selectedIncludes('Diagn_stico_001', rec.Diagn_stico_001, '9'); },
+    S_ntomas_que_presenta_a_la_fec: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '4'); },
+    Especifique_s_ntoma: function (rec) { return selectedIncludes('S_ntomas_que_presenta_a_la_fec', rec.S_ntomas_que_presenta_a_la_fec, 'otro'); },
+    _Ha_recibido_alg_n_diagn_stico: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '4'); },
+    Especifique_diagn_stico_previo: function (rec) { return selectedIncludes('_Ha_recibido_alg_n_diagn_stico', rec._Ha_recibido_alg_n_diagn_stico, 'otro'); },
+    Diagn_stico_002: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '4'); },
+    Otro_diagn_stico: function (rec) { return selectedIncludes('Diagn_stico_002', rec.Diagn_stico_002, 'otro'); },
+    _Se_realiza_procedimiento_odon: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '2'); },
+    _Qupe_procedimiento_se_realiza: function (rec) { return valueMatches('_Se_realiza_procedimiento_odon', rec._Se_realiza_procedimiento_odon, 'Yes'); },
+    Especificar_003: function (rec) { return selectedIncludes('_Qupe_procedimiento_se_realiza', rec._Qupe_procedimiento_se_realiza, '6'); },
+    TX: function (rec) { return valueMatches('entrega_tx', rec.entrega_tx, 'Yes'); },
+    _Requiere_anteojos: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '4'); },
+    Especifique_qu_se_entrega: function (rec) { return valueMatches('entrega_tx', rec.entrega_tx, 'Yes'); },
+    Especificar_lo_que_se_entrega_: function (rec) { return valueMatches('Especifique_qu_se_entrega', rec.Especifique_qu_se_entrega, 'otro'); },
+    FE: function (rec) { return valueMatches('ME_ML', rec.ME_ML, '1') || valueMatches('ME_ML', rec.ME_ML, '2_1'); },
+    FA: function (rec) { return valueMatches('ME_ML', rec.ME_ML, '1'); },
+    Unidades_entregadas: function (rec) { return valueMatches('entrega_tx', rec.entrega_tx, 'Yes'); },
+    Plan_de_Tratamiento: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '3'); },
+    Fotograf_a_de_la_Rec_Acuse_de_recibi_etc: function (rec) { return normText(rec.TX || '') !== ''; },
+    REFORG: function (rec) { return valueMatches('REF', rec.REF, 'Yes'); },
+    REFSPEC: function (rec) { return valueMatches('REF', rec.REF, 'Yes'); },
+    MEDREF: function (rec) { return valueMatches('REF', rec.REF, 'Yes'); },
+    SPREFMOTMED: function (rec) { return valueMatches('MEDREF', rec.MEDREF, '0'); },
+    REF: function (rec) { return !valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '3'); },
+    CGR: function (rec) { return Number(rec.AGE || 0) < 18; }
+  };
+
+  function applyConditionalStateToRow(tr) {
+    if (!tr) return;
+    var rec = getRowRecord(tr);
+    tr.querySelectorAll('input[data-col], select[data-col], textarea[data-col]').forEach(function (ctrl) {
+      var col = ctrl.getAttribute('data-col');
+      if (!col) return;
+      var rule = FIELD_RULES[col];
+      if (!rule) return;
+      var enabled = true;
+      try {
+        enabled = !!rule(rec);
+      } catch (_) {
+        enabled = true;
+      }
+      ctrl.disabled = !enabled;
+      ctrl.classList.toggle('field-disabled', !enabled);
+      if (!enabled) {
+        ctrl.title = 'Campo deshabilitado por condición del formulario Kobo';
+      } else if (ctrl.title === 'Campo deshabilitado por condición del formulario Kobo') {
+        ctrl.title = '';
+      }
+    });
+  }
+
+  function applyConditionalStateToTable() {
+    var rows = dataTableEl.querySelectorAll('tbody tr');
+    rows.forEach(function (tr) { applyConditionalStateToRow(tr); });
+  }
+
+  function getDisplayColumns(records) {
+    var all = [];
+    var seen = new Set();
+    ALWAYS_VISIBLE_COLUMNS.forEach(function (c) {
+      if (!seen.has(c)) {
+        seen.add(c);
+        all.push(c);
+      }
+    });
+    records.forEach(function (rec) {
+      Object.keys(rec || {}).forEach(function (k) {
+        if (!seen.has(k)) {
+          seen.add(k);
+          all.push(k);
+        }
+      });
+    });
+    return all;
+  }
+
   function loadExcelForVerification() {
     fetch('/api/load-excel', { method: 'POST' })
       .then(function (r) { return r.json(); })
@@ -358,6 +690,7 @@
         var alreadySubmitted = data.already_submitted || [];
         renderTable(extractedRecords, alreadySubmitted);
         verifySectionEl.style.display = 'block';
+        showCrossValidation(data.cross_validation);
         showValidationSummary(data.validation, alreadySubmitted);
         var msg = 'Excel cargado: ' + data.count + ' registros.';
         if (alreadySubmitted.length > 0) {
@@ -366,23 +699,21 @@
         var v = data.validation || {};
         if (v.valid != null) msg += ' ' + v.valid + ' completos.';
         addLog(msg + ' Listo para iniciar.', 'info');
+        // Limpiar campos de ubicación para aplicar los del nuevo archivo
+        var inpEstado = document.getElementById('inputEstadoBrigada');
+        var inpLugar = document.getElementById('inputLugar');
+        var inpLat = document.getElementById('inputLatitud');
+        var inpLon = document.getElementById('inputLongitud');
+        if (inpEstado) inpEstado.value = '';
+        if (inpLugar) inpLugar.value = '';
+        if (inpLat) inpLat.value = '';
+        if (inpLon) inpLon.value = '';
+
         if (data.defaults) {
-          if (data.defaults.Estado_brigada) {
-            var inpEstado = document.getElementById('inputEstadoBrigada');
-            if (inpEstado && !inpEstado.value) inpEstado.value = data.defaults.Estado_brigada;
-          }
-          if (data.defaults.Lugar) {
-            var inpLugar = document.getElementById('inputLugar');
-            if (inpLugar && !inpLugar.value) inpLugar.value = data.defaults.Lugar;
-          }
-          if (data.defaults.Latitud) {
-            var inpLat = document.getElementById('inputLatitud');
-            if (inpLat && !inpLat.value) inpLat.value = data.defaults.Latitud;
-          }
-          if (data.defaults.Longitud) {
-            var inpLon = document.getElementById('inputLongitud');
-            if (inpLon && !inpLon.value) inpLon.value = data.defaults.Longitud;
-          }
+          if (data.defaults.Estado_brigada && inpEstado) inpEstado.value = data.defaults.Estado_brigada;
+          if (data.defaults.Lugar && inpLugar) inpLugar.value = data.defaults.Lugar;
+          if (data.defaults.Latitud && inpLat) inpLat.value = data.defaults.Latitud;
+          if (data.defaults.Longitud && inpLon) inpLon.value = data.defaults.Longitud;
         }
         // Actualizar estado de coordenadas requeridas
         coordsRequired = !!data.coords_required;
@@ -392,8 +723,10 @@
           var lugarLabel = data.coords_from_store;
           setCoordsHint('Coordenadas aplicadas para "' + lugarLabel + '".', 'info');
           addLog('Coordenadas aplicadas para ' + lugarLabel, 'info');
-        } else if ((inputLatitud && inputLatitud.value) || (inputLongitud && inputLongitud.value)) {
+        } else if ((inpLat && inpLat.value) || (inpLon && inpLon.value)) {
           setCoordsHint('Coordenadas listas para usar.', 'info');
+        } else if (!data.defaults || (!data.defaults.Lugar && !data.defaults.Estado_brigada)) {
+          setCoordsHint('No se detectó lugar de atención conocido. Ingresa Estado, Lugar y Coordenadas manualmente si es necesario.', 'info');
         } else if (coordsRequired) {
           setCoordsHint('Coordenadas obligatorias: el lugar no fue reconocido. Ingresa Latitud y Longitud para continuar.', 'error');
         } else {
@@ -407,25 +740,110 @@
 
   function showValidationSummary(v, alreadySubmitted) {
     if (!validationSummaryEl) return;
+    lastValidation = v || null;
+    lastAlreadySubmitted = alreadySubmitted || [];
+    if (validationDetailEl) validationDetailEl.style.display = 'none';
+
     var parts = [];
     if (alreadySubmitted && alreadySubmitted.length > 0) {
-      parts.push('<span class="val-submitted">' + alreadySubmitted.length + ' fila(s) ya cargada(s) en Kobo (desmarcadas)</span>');
+      parts.push('<span class="val-submitted" data-vd-type="submitted">' + alreadySubmitted.length + ' fila(s) ya cargada(s) en Kobo (desmarcadas)</span>');
     }
     if (v && v.errors && v.errors.length > 0) {
-      parts.push('<span class="val-error">⚠ ' + v.errors.length + ' fila(s) con errores obligatorios</span>');
+      parts.push('<span class="val-error" data-vd-type="errors">\u26a0 ' + v.errors.length + ' fila(s) con errores obligatorios</span>');
     }
     if (v && v.duplicates && v.duplicates.length > 0) {
-      parts.push('<span class="val-warn">⚠ ' + v.duplicates.length + ' posible(s) fila(s) duplicada(s)</span>');
+      parts.push('<span class="val-warn" data-vd-type="dupes">\u26a0 ' + v.duplicates.length + ' posible(s) fila(s) duplicada(s)</span>');
     }
     if (v && v.with_warnings > 0) {
-      parts.push('<span class="val-info">' + v.with_warnings + ' fila(s) con advertencias</span>');
+      parts.push('<span class="val-info" data-vd-type="warnings">' + v.with_warnings + ' fila(s) con advertencias</span>');
     }
     if (parts.length === 0) {
       validationSummaryEl.style.display = 'none';
       return;
     }
-    validationSummaryEl.innerHTML = parts.join(' · ');
+    validationSummaryEl.innerHTML = parts.join(' \u00b7 ');
     validationSummaryEl.style.display = 'block';
+  }
+
+  function showValidationDetail(type) {
+    if (!validationDetailEl) return;
+    var v = lastValidation || {};
+    var html = '';
+    var headerClass = '';
+    var title = '';
+    var rows = [];
+
+    if (type === 'errors' && v.errors && v.errors.length > 0) {
+      headerClass = 'vd-errors';
+      title = '\u26a0 Filas con errores obligatorios (' + v.errors.length + ')';
+      v.errors.forEach(function (e) {
+        rows.push('<div class="vd-row"><span class="vd-fila">Fila ' + e.fila + '</span><span class="vd-msg">' + escapeHtml(e.mensaje) + '</span></div>');
+      });
+      if (v.errors.length >= 30) {
+        rows.push('<div class="vd-truncated">Mostrando las primeras 30 filas\u2026</div>');
+      }
+    } else if (type === 'warnings' && v.warnings && v.warnings.length > 0) {
+      headerClass = 'vd-warnings';
+      title = 'Filas con advertencias (' + v.with_warnings + ')';
+      v.warnings.forEach(function (w) {
+        rows.push('<div class="vd-row"><span class="vd-fila">Fila ' + w.fila + '</span><span class="vd-msg">' + escapeHtml(w.mensaje) + '</span></div>');
+      });
+      if (v.with_warnings > v.warnings.length) {
+        rows.push('<div class="vd-truncated">Mostrando ' + v.warnings.length + ' de ' + v.with_warnings + ' filas\u2026</div>');
+      }
+    } else if (type === 'dupes' && v.duplicates && v.duplicates.length > 0) {
+      headerClass = 'vd-dupes';
+      title = '\u26a0 Posibles duplicados (' + v.duplicates.length + ')';
+      v.duplicates.forEach(function (d) {
+        var filasStr = d.filas.join(', ');
+        var nombre = d.nombre || '(vac\u00edo)';
+        var fecha = d.fecha || '(sin fecha)';
+        rows.push('<div class="vd-row"><span class="vd-fila">Filas ' + filasStr + '</span><span class="vd-msg">' + escapeHtml(nombre) + ' \u2014 ' + escapeHtml(fecha) + '</span></div>');
+      });
+    } else if (type === 'submitted' && lastAlreadySubmitted.length > 0) {
+      headerClass = 'vd-submitted';
+      title = 'Filas ya cargadas en Kobo (' + lastAlreadySubmitted.length + ')';
+      lastAlreadySubmitted.forEach(function (idx) {
+        rows.push('<div class="vd-row"><span class="vd-fila">Fila ' + (idx + 1) + '</span><span class="vd-msg">Ya enviada anteriormente</span></div>');
+      });
+    } else {
+      validationDetailEl.style.display = 'none';
+      return;
+    }
+
+    html += '<div class="validation-detail">';
+    html += '<div class="validation-detail-header ' + headerClass + '">';
+    html += '<span>' + title + '</span>';
+    html += '<button class="validation-detail-close" title="Cerrar">&times;</button>';
+    html += '</div>';
+    html += '<div class="validation-detail-body">' + rows.join('') + '</div>';
+    html += '</div>';
+
+    validationDetailEl.innerHTML = html;
+    validationDetailEl.style.display = 'block';
+    validationDetailEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  if (validationSummaryEl) {
+    validationSummaryEl.addEventListener('click', function (ev) {
+      var span = ev.target.closest('[data-vd-type]');
+      if (!span) return;
+      var type = span.getAttribute('data-vd-type');
+      if (validationDetailEl && validationDetailEl.style.display !== 'none' &&
+          validationDetailEl.querySelector('.validation-detail-header.' + 'vd-' + type)) {
+        validationDetailEl.style.display = 'none';
+        return;
+      }
+      showValidationDetail(type);
+    });
+  }
+
+  if (validationDetailEl) {
+    validationDetailEl.addEventListener('click', function (ev) {
+      if (ev.target.closest('.validation-detail-close')) {
+        validationDetailEl.style.display = 'none';
+      }
+    });
   }
 
   function renderTable(records, alreadySubmitted) {
@@ -436,7 +854,7 @@
     var submittedSet = {};
     (alreadySubmitted || []).forEach(function (i) { submittedSet[i] = true; });
 
-    const cols = Object.keys(records[0]);
+    const cols = getDisplayColumns(records);
     let html = '<thead><tr>';
     html += '<th class="col-select"><input type="checkbox" id="selectAllRows" title="Seleccionar todas" checked></th>';
     html += '<th class="col-status" title="Estado de carga">Estado</th>';
@@ -501,6 +919,8 @@
       }
       _pendingRestoreIndices = null;
     }
+
+    applyConditionalStateToTable();
   }
 
   function getSelectedRowIndices() {
@@ -530,6 +950,16 @@
     });
     return records;
   }
+
+  dataTableEl.addEventListener('input', function (ev) {
+    var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-row]') : null;
+    if (tr) applyConditionalStateToRow(tr);
+  });
+
+  dataTableEl.addEventListener('change', function (ev) {
+    var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-row]') : null;
+    if (tr) applyConditionalStateToRow(tr);
+  });
 
   function renderPdfTable(records) {
     if (!pdfDataTableEl) return;
@@ -590,8 +1020,9 @@
       if (data.error) { addLog('Error: ' + data.error, 'error'); return; }
       uploadedFilename = data.filename;
       uploadedFileType = data.type || 'excel';
-      uploadedFileEl.textContent = 'Archivo cargado: ' + data.filename;
-      addLog('Archivo subido: ' + data.filename, 'info');
+      uploadedOriginalName = data.original_filename || data.filename;
+      uploadedFileEl.textContent = 'Archivo cargado: ' + uploadedOriginalName;
+      addLog('Archivo subido: ' + uploadedOriginalName, 'info');
       verifySectionEl.style.display = 'none';
       extractedRecords = [];
       pdfExtractedRecords = [];
@@ -648,7 +1079,7 @@
         uploadedFilename = data.filename;
         uploadedFileType = 'excel';
         dataConfirmed = true;
-        uploadedFileEl.textContent = 'Datos confirmados: ' + data.rows + ' registros. Listo para Iniciar.';
+        uploadedFileEl.textContent = (uploadedOriginalName || data.filename) + ' — ' + data.rows + ' registros. Listo para Iniciar.';
         addLog('Datos confirmados. Listo para iniciar carga.', 'info');
         // Preservar selección actual para restaurarla después del re-render
         var currentSelection = getSelectedRowIndices();
@@ -681,6 +1112,29 @@
 
   btnStart.addEventListener('click', function () {
     if (btnStart.disabled) return;
+
+    var _estado = (document.getElementById('inputEstadoBrigada') || {}).value || '';
+    var _lugar  = (document.getElementById('inputLugar') || {}).value || '';
+    var _lat    = (document.getElementById('inputLatitud') || {}).value || '';
+    var _lon    = (document.getElementById('inputLongitud') || {}).value || '';
+    var camposFaltantes = [];
+    if (!_estado.trim()) camposFaltantes.push('Estado de la brigada');
+    if (!_lugar.trim())  camposFaltantes.push('Lugar (colegio/comunidad)');
+    if (!_lat.trim())    camposFaltantes.push('Latitud');
+    if (!_lon.trim())    camposFaltantes.push('Longitud');
+    if (camposFaltantes.length > 0) {
+      var msg = 'Faltan datos en "03 INICIAR CARGA":\n• ' + camposFaltantes.join('\n• ') +
+                '\n\nLlena estos campos antes de iniciar la carga.';
+      alert(msg);
+      addLog('No se puede iniciar: faltan campos obligatorios (' + camposFaltantes.join(', ') + ').', 'error');
+      var primerCampo = !_estado.trim() ? document.getElementById('inputEstadoBrigada') :
+                        !_lugar.trim()  ? document.getElementById('inputLugar') :
+                        !_lat.trim()    ? document.getElementById('inputLatitud') :
+                                          document.getElementById('inputLongitud');
+      if (primerCampo) { primerCampo.scrollIntoView({ behavior: 'smooth', block: 'center' }); primerCampo.focus(); }
+      return;
+    }
+
     var selectedIndices = getSelectedRowIndices();
     var hasTableRows = dataTableEl && dataTableEl.querySelectorAll('tbody tr').length > 0;
     if (hasTableRows && selectedIndices.length === 0) {
@@ -701,12 +1155,10 @@
     var alertShown = false;
 
     if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
-    const es = new EventSource('/api/progress');
-    activeEventSource = es;
 
-    es.onmessage = function (ev) {
+    function handleSSEMessage(ev) {
       try {
-        const data = JSON.parse(ev.data);
+        var data = JSON.parse(ev.data);
         if (data.event === 'ping') return;
         if (data.message) {
           addLog(data.message, data.success === false ? 'error' : data.event === 'error' ? 'error' : 'info');
@@ -746,11 +1198,9 @@
         }
         if (data.event === 'done' || data.event === 'error') {
           confirmRowSection.style.display = 'none';
-          es.close();
-          activeEventSource = null;
+          if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
           setRunning(false);
           if (data.stats && data.stats.tiempo_segundos != null) setProgress(100, 'Finalizado');
-          // Mostrar botón de descarga de filas fallidas si corresponde
           if (data.has_failed_excel || (data.stats && (data.stats.fallidos || 0) > 0)) {
             var btnDl = document.getElementById('btnDownloadFailed');
             if (!btnDl && progressActionsEl) {
@@ -770,16 +1220,48 @@
           loadCheckpoint();
           loadHistorial();
           loadExcelForVerification();
+          if (data.event === 'done' && activeKoboupFileId) {
+            activeKoboupFileId = null;
+            loadKoboupQueue();
+          }
         }
       } catch (err) {
         addLog('Error al interpretar evento: ' + err.message, 'error');
       }
-    };
-    es.onerror = function () {
-      es.close();
-      activeEventSource = null;
-      setRunning(false);
-    };
+    }
+
+    function handleSSEError() {
+      if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
+      fetch('/api/status').then(function (r) { return r.json(); }).then(function (st) {
+        if (st.status === 'running') {
+          addLog('Conexión perdida, reconectando…', 'info');
+          setTimeout(connectSSE, 2000);
+        } else {
+          setRunning(false);
+          setProgress(100, 'Finalizado');
+          loadCheckpoint();
+          loadHistorial();
+          loadExcelForVerification();
+        }
+      }).catch(function () {
+        setTimeout(function () {
+          fetch('/api/status').then(function (r) { return r.json(); }).then(function (st) {
+            if (st.status === 'running') { setTimeout(connectSSE, 2000); }
+            else { setRunning(false); }
+          }).catch(function () { setRunning(false); });
+        }, 3000);
+      });
+    }
+
+    function connectSSE() {
+      if (activeEventSource) { activeEventSource.close(); }
+      var src = new EventSource('/api/progress');
+      activeEventSource = src;
+      src.onmessage = handleSSEMessage;
+      src.onerror = handleSSEError;
+    }
+
+    connectSSE();
 
     const estadoBrigada = (document.getElementById('inputEstadoBrigada') || {}).value.trim();
     const lugar = (document.getElementById('inputLugar') || {}).value.trim();
@@ -1278,18 +1760,40 @@
     updateSummaryStats(archivosSet.size, totalRegistros);
   }
 
-  function updateKpis(entries) {
-    if (!kpiSummaryEl || !kpiArchivosEl || !kpiFilasEl) return;
-    const archivosExitosos = new Set();
-    let filasExitosas = 0;
-    (entries || []).forEach(function (e) {
-      var exitosos = Number(e.exitosos) || 0;
-      var nombreArchivo = (e.archivo_original || e.archivo || '').trim();
-      if (exitosos > 0 && nombreArchivo) archivosExitosos.add(nombreArchivo);
-      filasExitosas += exitosos;
-    });
-    kpiArchivosEl.textContent = archivosExitosos.size;
-    kpiFilasEl.textContent = filasExitosas;
+  function renderKpiMetricCards(container, title, items, emptyText) {
+    if (!container) return;
+    if (!items || items.length === 0) {
+      container.innerHTML = '<div class="kpi-card"><div class="kpi-label">' + escapeHtml(title) + '</div><div class="kpi-sub">' + escapeHtml(emptyText || 'Sin datos') + '</div></div>';
+      return;
+    }
+    var html = items.map(function (item) {
+      return '<div class="kpi-card">'
+        + '<div class="kpi-label">' + escapeHtml(item.label || '') + '</div>'
+        + '<div class="kpi-value">' + (item.count != null ? item.count : 0) + '</div>'
+        + '<div class="kpi-sub">' + escapeHtml(title) + '</div>'
+        + '</div>';
+    }).join('');
+    container.innerHTML = html;
+  }
+
+  function loadKpis() {
+    if (!kpiSummaryEl || !kpiPatientsEl || !kpiConsultasEl) return;
+    fetch('/api/kpis')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok || !data.kpis) return;
+        var k = data.kpis;
+        kpiPatientsEl.textContent = k.patients_registered || 0;
+        kpiConsultasEl.textContent = k.total_consultations || 0;
+        renderKpiMetricCards(kpiSpecialtiesEl, 'Consultas', k.specialties || [], 'Sin consultas registradas');
+        renderKpiMetricCards(kpiSuppliesEl, 'Insumos entregados', k.supplies || [], 'Sin insumos registrados');
+      })
+      .catch(function () {
+        if (kpiPatientsEl) kpiPatientsEl.textContent = '0';
+        if (kpiConsultasEl) kpiConsultasEl.textContent = '0';
+        if (kpiSpecialtiesEl) kpiSpecialtiesEl.innerHTML = '';
+        if (kpiSuppliesEl) kpiSuppliesEl.innerHTML = '';
+      });
   }
 
   function loadHistorial() {
@@ -1298,7 +1802,7 @@
       .then(function (data) {
         var entries = data.entries || [];
         var archivosExitosos = data.archivos_exitosos || [];
-        updateKpis(entries);
+        loadKpis();
         updateSummaryFromEntries(entries);
         renderHistorialArchivos(archivosExitosos);
         renderHistorial(entries);
@@ -1409,8 +1913,9 @@
           }
           uploadedFilename = data.filename;
           uploadedFileType = data.type || 'excel';
-          uploadedFileEl.textContent = 'Archivo cargado: ' + (data.original_filename || data.filename);
-          addLog('Archivo recargado desde historial: ' + (data.original_filename || data.filename), 'info');
+          uploadedOriginalName = data.original_filename || data.filename;
+          uploadedFileEl.textContent = 'Archivo cargado: ' + uploadedOriginalName;
+          addLog('Archivo recargado desde historial: ' + uploadedOriginalName, 'info');
           verifySectionEl.style.display = 'none';
           extractedRecords = [];
           loadExcelForVerification();
@@ -1551,8 +2056,17 @@
     function showTooltip(target) {
       var text = target.getAttribute('data-tooltip');
       if (!text) return;
-      bubble.textContent = text;
-      bubble.classList.remove('visible', 'tooltip-above');
+      if (text.indexOf('\n') !== -1) {
+        bubble.innerHTML = '';
+        text.split('\n').forEach(function(line, i) {
+          if (i > 0) bubble.appendChild(document.createElement('br'));
+          bubble.appendChild(document.createTextNode(line));
+        });
+      } else {
+        bubble.textContent = text;
+      }
+      bubble.classList.remove('visible', 'tooltip-above', 'tooltip-warning');
+      if (target.disabled) bubble.classList.add('tooltip-warning');
       bubble.style.top = '-9999px';
       bubble.style.left = '-9999px';
       bubble.style.display = 'block';
@@ -1936,6 +2450,212 @@
 
     window._helpGuide = { open: openGuide, close: closeGuide };
   })();
+
+  // ── KoboUp Queue ───────────────────────────────────────────────────────────
+
+  function loadKoboupQueue() {
+    if (!btnLoadKoboup) return;
+    btnLoadKoboup.disabled = true;
+    btnLoadKoboup.textContent = 'Cargando…';
+    if (koboupStatus) koboupStatus.textContent = '';
+    fetch('/api/koboup/files')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        btnLoadKoboup.disabled = false;
+        btnLoadKoboup.textContent = 'Actualizar lista';
+        if (data.error) {
+          if (koboupStatus) koboupStatus.textContent = 'Error: ' + data.error;
+          addLog('Error KoboUp: ' + data.error, 'error');
+          return;
+        }
+        koboupFiles = data.files || [];
+        if (koboupStatus) {
+          koboupStatus.textContent = data.pending + ' pendiente(s) / ' + data.total + ' total';
+        }
+        renderKoboupList();
+      })
+      .catch(function (e) {
+        btnLoadKoboup.disabled = false;
+        btnLoadKoboup.textContent = 'Cargar lista de KoboUp';
+        if (koboupStatus) koboupStatus.textContent = 'Sin conexión a KoboUp';
+        addLog('Error al conectar con KoboUp: ' + e.message, 'error');
+      });
+  }
+
+  function renderKoboupList() {
+    if (!koboupListBody) return;
+    if (koboupFiles.length === 0) {
+      if (koboupListEl) koboupListEl.style.display = 'none';
+      if (koboupEmpty) { koboupEmpty.style.display = 'block'; koboupEmpty.textContent = 'No hay archivos validados en KoboUp.'; }
+      return;
+    }
+    if (koboupEmpty) koboupEmpty.style.display = 'none';
+    if (koboupListEl) koboupListEl.style.display = 'block';
+
+    var html = '';
+    for (var i = 0; i < koboupFiles.length; i++) {
+      var f = koboupFiles[i];
+      var isActive = activeKoboupFileId && String(f.id) === String(activeKoboupFileId);
+      var isDone = f.local_status === 'completed';
+      var isPartial = f.local_status === 'partial';
+      var rowClass = 'kq-row';
+      if (isActive) rowClass += ' kq-active';
+      if (isDone) rowClass += ' kq-done';
+
+      var statusLabel = isDone ? '<span class="kq-badge kq-badge-done">Completado</span>'
+        : isPartial ? '<span class="kq-badge kq-badge-active">Parcial</span>'
+        : isActive ? '<span class="kq-badge kq-badge-active">En proceso</span>'
+        : '<span class="kq-badge kq-badge-pending">Pendiente</span>';
+
+      var actionBtn = isDone
+        ? '<button class="btn btn-small btn-secondary kq-btn" disabled>Completado</button>'
+        : isActive
+        ? '<button class="btn btn-small btn-secondary kq-btn" disabled>En proceso</button>'
+        : '<button class="btn btn-small btn-primary kq-btn" data-kq-idx="' + i + '">' + (isPartial ? 'Continuar' : 'Cargar') + '</button>';
+
+      var sentCount = f.sent_count || 0;
+      var totalRows = f.row_count || 0;
+      var sentComplete = totalRows > 0 && sentCount >= totalRows;
+      var sentPartial = sentCount > 0 && !sentComplete;
+      var sentClass = sentComplete ? 'kq-sent-complete' : sentPartial ? 'kq-sent-partial' : 'kq-sent-zero';
+      var sentLabel = '<span class="kq-sent ' + sentClass + '">' + sentCount + '/' + totalRows + '</span>';
+      var statusSource = f.status_source || '';
+      var statusDetail = statusSource
+        ? '<div class="kq-status-detail" title="' + statusSource.replace(/"/g, '&quot;') + '">' + statusSource + '</div>'
+        : '';
+
+      html += '<div class="' + rowClass + '">'
+        + '<span class="kq-col-num">' + (i + 1) + '</span>'
+        + '<span class="kq-col-name" title="' + (f.original_name || '').replace(/"/g, '&quot;') + '">' + (f.original_name || 'Sin nombre') + '</span>'
+        + '<span class="kq-col-sent">' + sentLabel + '</span>'
+        + '<span class="kq-col-status">' + statusLabel + statusDetail + '</span>'
+        + '<span class="kq-col-action">' + actionBtn + '</span>'
+        + '</div>';
+    }
+    koboupListBody.innerHTML = html;
+  }
+
+  if (koboupListBody) {
+    koboupListBody.addEventListener('click', function (ev) {
+      var btn = ev.target.closest('[data-kq-idx]');
+      if (!btn) return;
+      var idx = parseInt(btn.getAttribute('data-kq-idx'), 10);
+      if (isNaN(idx) || !koboupFiles[idx]) return;
+      selectKoboupFile(koboupFiles[idx], btn);
+    });
+  }
+
+  function selectKoboupFile(fileInfo, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Descargando…'; }
+    activeKoboupFileId = String(fileInfo.id);
+    addLog('Descargando de KoboUp: ' + fileInfo.original_name + '…', 'info');
+
+    fetch('/api/koboup/load-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        download_url: fileInfo.download_url,
+        original_name: fileInfo.original_name,
+        file_id: String(fileInfo.id),
+      }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          addLog('Error al descargar: ' + data.error, 'error');
+          if (btn) { btn.disabled = false; btn.textContent = 'Cargar'; }
+          return;
+        }
+        uploadedFilename = data.filename;
+        uploadedFileType = data.type || 'excel';
+        uploadedOriginalName = data.original_filename || data.filename;
+        uploadedFileEl.textContent = 'Archivo cargado: ' + uploadedOriginalName;
+        addLog('Archivo descargado y cargado: ' + uploadedOriginalName, 'info');
+        renderKoboupList();
+        loadExcelForVerification();
+        updateStartButton();
+      })
+      .catch(function (e) {
+        addLog('Error: ' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Cargar'; }
+      });
+  }
+
+  if (btnLoadKoboup) {
+    btnLoadKoboup.addEventListener('click', loadKoboupQueue);
+  }
+
+  // ── Cross Validation Panel ────────────────────────────────────────────────
+
+  function showCrossValidation(cv) {
+    if (!crossValidationPanel) return;
+    if (!cv || !cv.summary) {
+      crossValidationPanel.style.display = 'none';
+      return;
+    }
+    var s = cv.summary;
+    if (s.already_loaded === 0 && s.possible_dupes === 0) {
+      crossValidationPanel.style.display = 'none';
+      return;
+    }
+
+    var html = '<div class="cv-summary">';
+    if (uploadedOriginalName) {
+      html += '<div class="cv-filename">' + uploadedOriginalName + '</div>';
+    }
+    html += '<div class="cv-stats">';
+    if (s.already_loaded > 0) {
+      html += '<span class="cv-stat cv-stat-done">' + s.already_loaded + ' paciente(s) ya cargados a Kobo</span>';
+    }
+    if (s.possible_dupes > 0) {
+      html += '<span class="cv-stat cv-stat-warn">' + s.possible_dupes + ' posible(s) duplicado(s) — revisar</span>';
+    }
+    html += '<span class="cv-stat cv-stat-new">' + s.new + ' paciente(s) nuevos listos para cargar</span>';
+    html += '</div>';
+
+    if (cv.possible_duplicates && cv.possible_duplicates.length > 0) {
+      html += '<details class="cv-details"><summary>Ver detalle de posibles duplicados</summary><div class="cv-dupes-list">';
+      for (var i = 0; i < cv.possible_duplicates.length; i++) {
+        var d = cv.possible_duplicates[i];
+        html += '<div class="cv-dupe-item"><strong>Fila ' + (d.index + 1) + ':</strong> ' + d.name;
+        if (d.matched_with && d.matched_with.length > 0) {
+          html += ' — coincide con: ';
+          for (var j = 0; j < d.matched_with.length; j++) {
+            var m = d.matched_with[j];
+            html += '<em>' + m.name + '</em> (' + (m.service || '') + ', ' + (m.date || '') + ', ' + (m.file || '') + ')';
+            if (j < d.matched_with.length - 1) html += '; ';
+          }
+        }
+        html += '</div>';
+      }
+      html += '</div></details>';
+    }
+
+    if (s.new > 0 && (s.already_loaded > 0 || s.possible_dupes > 0)) {
+      html += '<div class="cv-action"><button type="button" class="btn btn-small btn-primary" id="btnSelectNewOnly">Seleccionar solo ' + s.new + ' nuevos</button></div>';
+    }
+    html += '</div>';
+    crossValidationPanel.innerHTML = html;
+    crossValidationPanel.style.display = 'block';
+
+    var btnNewOnly = document.getElementById('btnSelectNewOnly');
+    if (btnNewOnly && cv.new_records) {
+      btnNewOnly.addEventListener('click', function () {
+        selectOnlyIndices(cv.new_records);
+        addLog('Seleccionadas solo las ' + cv.new_records.length + ' filas nuevas.', 'info');
+      });
+    }
+  }
+
+  function selectOnlyIndices(indices) {
+    var checkboxes = dataTableEl.querySelectorAll('input[type="checkbox"][data-row-idx]');
+    var indexSet = {};
+    for (var i = 0; i < indices.length; i++) indexSet[indices[i]] = true;
+    for (var j = 0; j < checkboxes.length; j++) {
+      var idx = parseInt(checkboxes[j].getAttribute('data-row-idx'), 10);
+      checkboxes[j].checked = !!indexSet[idx];
+    }
+  }
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 
