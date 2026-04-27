@@ -179,6 +179,39 @@ def list_file_records(status: Optional[str] = None) -> List[Dict[str, Any]]:
     return [_row_to_dict(r) for r in rows]
 
 
+def kobo_submission_stats_by_file_ids(file_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """
+    Resumen de envíos a Kobo API por id de archivo (bitácora).
+    Solo entradas con al menos una fila enviada con éxito (sent_count > 0).
+    """
+    if not file_ids:
+        return {}
+    unique = sorted({int(x) for x in file_ids if x is not None})
+    if not unique:
+        return {}
+    placeholders = ",".join("?" * len(unique))
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT file_id, MAX(submitted_at) AS last_submitted_at
+            FROM kobo_submission_logs
+            WHERE file_id IN ({placeholders})
+              AND file_id IS NOT NULL
+              AND sent_count > 0
+            GROUP BY file_id
+            """,
+            unique,
+        ).fetchall()
+    out: Dict[int, Dict[str, Any]] = {}
+    for row in rows:
+        fid, last_at = int(row[0]), row[1]
+        out[fid] = {
+            "kobo_api_sent": True,
+            "kobo_api_last_submitted_at": last_at,
+        }
+    return out
+
+
 def get_file_record(file_id: int) -> Optional[Dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()

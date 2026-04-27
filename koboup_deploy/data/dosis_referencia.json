@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "nota_legal": "Pauta orientativa. Debe ser revisada y ajustada según normativa institucional. No sustituye criterio clínico.",
+  "drogas": {
+    "paracetamol": {
+      "2-11": { "texto": "Ajuste por kg según protocolo de brigada. Ej.: 10-15 mg/kg c/6-8 h (máx. 60 mg/kg/día en 24 h, según criterio clínico)." },
+      "12-17": { "texto": "500-750 mg c/6-8 h según peso/criterio; límite diario según protocolo." },
+      "18-64": { "texto": "500-1000 mg c/6-8 h, máx. 4 g/d (ver contraindicaciones; no exceder por otros productos con el mismo fármaco)." },
+      "65+": { "texto": "Dosis baja a moderada, intervalos 6-8 h; ajuste por comorbilidad; evaluar riesgo hepático." }
+    },
+    "ibuprofeno": {
+      "2-11": { "texto": "Uso con precaución: dosis en mg/kg y duración acotada según protocolo pediátrico; evitar si deshidratación." },
+      "12-17": { "texto": "Aprox. 10 mg/kg/dosis (cielos por protocolo), c/6-8 h; duración mínima necesaria; tomar con alimentos." },
+      "18-64": { "texto": "200-400 mg c/6-8 h; máx. diario según protocolo; riesgo GI, renal, CV." },
+      "65+": { "texto": "Muy precabido: evaluar riesgo renal, GI, CV; preferir analgésicos con mejor perfil si procede." }
+    },
+    "amoxicilina": {
+      "2-11": { "texto": "Ajuste por esquema/peso; duración e indicación según infección y protocolo." },
+      "12-64": { "texto": "Dosis frecuencia y duración según indicación, peso, función renal y pauta local; completar pauta." },
+      "65+": { "texto": "Ajuste por comorbilidades, función renal y duración; vigilar reacción adversa." }
+    }
+  }
+}

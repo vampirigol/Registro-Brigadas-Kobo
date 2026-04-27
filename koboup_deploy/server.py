@@ -48,6 +48,7 @@ from file_store import (
     get_validator_stats,
     has_validated_replacement,
     init_files_db,
+    kobo_submission_stats_by_file_ids,
     list_file_records,
     list_kobo_submission_logs,
     list_ref_locations,
@@ -61,6 +62,15 @@ from file_store import (
     update_row_count,
     update_status,
 )
+
+try:
+    from treatment_suggest import cohort_stats, suggest_treatment
+    from cohort_index_builder import build_and_write, schedule_rebuild_if_quiet
+except Exception:  # noqa: BLE001
+    suggest_treatment = None
+    cohort_stats = None
+    build_and_write = None
+    schedule_rebuild_if_quiet = None
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -96,6 +106,34 @@ KOBO_VISIBLE_COLUMNS = [
         "options": ["F", "M"],
     },
     {
+        "label": "Toma de consentimiento antes de iniciar la consulta",
+        "internal": "CONS1",
+        "required": True,
+        "aliases": [
+            "Toma de consentimiento antes de iniciar la consulta",
+            "Toma consentimiento inicial",
+            "Consent.",
+            "CONS1",
+            "Consentimiento",
+        ],
+        "options": ["Sí", "No"],
+        "hint": "Primer consentimiento, antes de iniciar la consulta. No es el mismo campo que el consentimiento informado verbal (final).",
+    },
+    {
+        "label": "¿Se tomó consentimiento informado de forma verbal?",
+        "internal": "CONS",
+        "required": True,
+        "aliases": [
+            "¿Se tomó consentimiento informado de forma verbal?",
+            "Se tomó consentimiento informado de forma verbal",
+            "Se tomó consentimiento informado verbal",
+            "CONS",
+            "Consentimiento informado verbal",
+        ],
+        "options": ["Sí", "No"],
+        "hint": "Obligatorio en Kobo. Indique Sí o No según se haya obtenido el consentimiento informado verbal.",
+    },
+    {
         "label": "Servicio que se brinda",
         "required": True,
         "aliases": ["Servicio que se brinda", "Servicio", "Especialidad"],
@@ -113,6 +151,7 @@ KOBO_VISIBLE_COLUMNS = [
             "Estado de origen",
             "Estado paciente",
             "Estado_paciente",
+            "Originario",
         ],
         "options": ["Baja California Sur", "Chihuahua", "Sonora", "Baja California", "Nuevo León"],
     },
@@ -205,7 +244,18 @@ KOBO_VISIBLE_COLUMNS = [
             "Otro",
         ],
     },
-    {"label": "Minoría", "required": False, "aliases": ["Minoría", "Minoria", "_Pertenece_a_alguna_minor_a_t"], "options": ["Sí", "No"]},
+    {
+        "label": "Minoría",
+        "required": False,
+        "aliases": [
+            "Minoría",
+            "Minoria",
+            "_Pertenece_a_alguna_minor_a_t",
+            "¿Pertenece a alguna minoría étnica?",
+            "Pertenece a alguna minoría étnica",
+        ],
+        "options": ["Sí", "No"],
+    },
     {"label": "Talla (cm)", "required": False, "aliases": ["Talla (cm)", "HEI"]},
     {"label": "Peso (kg)", "required": False, "aliases": ["Peso (kg)", "WEI"]},
     {"label": "Padecimiento médico actual", "required": False, "aliases": ["Padecimiento médico actual", "Padecimiento medico actual", "Diagnostico_Motivo", "DX"]},
@@ -231,7 +281,25 @@ KOBO_VISIBLE_COLUMNS = [
         "aliases": ["A dónde", "A donde", "¿A dónde?", "Referencia_donde"],
         "options": ["Clínica", "Segundo Nivel", "Hospital", "Laboratorio", "ONG", "Ministerio público", "Otro"],
     },
-    {"label": "Motivo Ref", "required": False, "aliases": ["Motivo Ref", "Motivo referencia", "Motivo_referencia"]},
+    {
+        "label": "Motivo Ref",
+        "internal": "Motivo_referencia",
+        "required": False,
+        "aliases": ["Motivo Ref", "Motivo referencia", "Motivo_referencia", "Motivo Referido", "Motivo referido"],
+    },
+    {
+        "label": "Especificar (motivo referido)",
+        "internal": "Motivo_especificar",
+        "required": False,
+        "aliases": [
+            "Especificar (motivo referido)",
+            "Especificar motivo referencia",
+            "Especificar m. ref. fisioterapia",
+            "Especificar m. ref. fisio",
+            "Motivo_especificar",
+        ],
+        "hint": "Detalle obligatorio en fisioterapia si hay referencia y «Motivo Ref» = «Otro» (Kobo: SPREFMOTMED).",
+    },
     {"label": "Acompañante", "required": False, "aliases": ["Acompañante", "Acompanante", "CGR"]},
     {
         "label": "Indicar si el paciente tiene alguna de las siguientes discapacidades",
@@ -242,6 +310,24 @@ KOBO_VISIBLE_COLUMNS = [
             "Tipo de discapacidad",
         ],
         "options": ["Motriz", "Visual", "Auditiva", "Intelectual", "Otra"],
+    },
+    {
+        "label": "¿Mujer embarazada o en periodo de lactancia?",
+        "internal": "ME_ML",
+        "required": False,
+        "aliases": [
+            "¿Mujer embarazada o en periodo de lactancia?",
+            "Mujer embarazada o en periodo de lactancia",
+            "¿Embarazada / Lactancia?",
+            "Embarazada / Lactancia",
+            "ME_ML",
+            "Embarazada o lactancia",
+            "Embarazo/Lactancia",
+            "Embarazo / Lactancia",
+            "Embarazada/Lactancia?",
+        ],
+        "options": ["Embarazada", "Lactancia", "No Aplica"],
+        "hint": "Solo aplica si el sexo es femenino; deje vacío o use No Aplica si no aplica.",
     },
     {
         "label": "Fisioterapia",
@@ -267,6 +353,20 @@ KOBO_VISIBLE_COLUMNS = [
             "Otro",
         ],
         "hint": "Texto o lista de diagnósticos; KoboUp convierte a 0/1 en columnas Diagnóstico/... en la API. Export: Diagnóstico/Revisión, …/Dolor, …/Especificar.",
+    },
+    {
+        "label": "Plan de Tratamiento",
+        "internal": "Plan_de_Tratamiento",
+        "required": False,
+        "aliases": [
+            "Plan de Tratamiento",
+            "Plan de Tratamiento (Fisioterapia u otros)",
+            "Plan de Tratamiento (Fisioterapia u otro)",
+            "Plan de tratamiento fisioterapia u otros",
+            "PlanTratamiento",
+            "Plan tratamiento",
+        ],
+        "hint": "Texto o plan; en fisioterapia suele describirse el plan terapéutico.",
     },
     {
         "label": "Diagnóstico Medicina General",
@@ -517,9 +617,49 @@ KOBO_VISIBLE_COLUMNS = [
         "options": ["Medicina General", "Oftalmología", "Dental", "Fisioterapia", "Laboratorios", "No Aplica"],
         "hint": "Seleccione el módulo donde recibió asesoría hoy.",
     },
+    {
+        "label": "Laboratorio Clínico",
+        "required": False,
+        "aliases": [
+            "Laboratorio Clínico",
+            "Laboratorio clinico",
+            "LABORATORIO CLÍNICO",
+            "LABORATORIO CLINICO",
+        ],
+    },
+    {
+        "label": "Diagnóstico / Resu",
+        "required": False,
+        "aliases": [
+            "Diagnóstico / Resu",
+            "Diagnostico / Resu",
+            "Diagnóstico/Resu",
+            "Diagnostico/Resu",
+            "Diagnóstico / Resultados Laboratorio",
+            "Diagnostico / Resultados Laboratorio",
+            "Diagnóstico Resultados Laboratorio",
+            "Diagnostico Resultados Laboratorio",
+        ],
+    },
+    {
+        "label": "Coordenadas",
+        "required": False,
+        "aliases": [
+            "Coordenadas",
+            "Ubicación geográfica de la atención",
+            "Ubicación geográfica de la atencion",
+            "Ubicación geográfica",
+            "Ubicacion geografica de la atencion",
+        ],
+    },
+    {"label": "Latitud", "required": False, "aliases": ["Latitud", "LAT", "latitud"]},
+    {"label": "Longitud", "required": False, "aliases": ["Longitud", "LON", "LNG", "longitud"]},
 ]
 
 ALWAYS_REQUIRED_SHEET_COLUMNS = [
+    "Toma de consentimiento antes de iniciar la consulta",
+    # CONS: obligatoria en el formulario Kobo; se inserta al abrir/guardar si falta.
+    "¿Se tomó consentimiento informado de forma verbal?",
     # Estas columnas son críticas para edición clínica básica.
     "Diagnóstico Medicina General",
     "Diagnóstico Odontología",
@@ -730,6 +870,8 @@ KOBO_OPTIONS_OVERRIDE: dict[str, list[str]] = {
         "Otro",
     ],
     "Modalidad": ["Albergues", "Centros Comunitarios", "Clínica Adventista", "Escuelas", "Móvil"],
+    "Toma de consentimiento antes de iniciar la consulta": ["Sí", "No"],
+    "¿Se tomó consentimiento informado de forma verbal?": ["Sí", "No"],
     "¿Se le ha brindado asesoría en uno de los módulos el día de hoy?": [
         "Medicina General",
         "Oftalmología",
@@ -1002,6 +1144,14 @@ def _enrich_kobo_aliases_from_validated(schema: list[dict]) -> list[dict]:
         "lugar b c": "Lugar de atención",
         "lugar b c s": "Lugar de atención",
         "lugar nl": "Lugar de atención",
+        "toma de consentimiento antes de iniciar la consulta": "Toma de consentimiento antes de iniciar la consulta",
+        "pertenece a alguna minora etnica": "Minoría",
+        "pertence a alguna minora etnica": "Minoría",
+        "originario": "Estado",
+        "motivo referido": "Motivo Ref",
+        "plan de tratamiento fisio": "Plan de Tratamiento",
+        "laboratorio clinico": "Laboratorio Clínico",
+        "coordenadas": "Coordenadas",
     }
     seed_label_by_alias = {_normalize_header(k): v for k, v in seed_label_by_alias.items() if _normalize_header(k)}
 
@@ -1046,6 +1196,56 @@ def _enrich_kobo_aliases_from_validated(schema: list[dict]) -> list[dict]:
 
 KOBO_VISIBLE_COLUMNS = _enrich_kobo_aliases_from_validated(KOBO_VISIBLE_COLUMNS)
 KOBO_ALIAS_TO_LABEL = _build_kobo_alias_map()
+
+# Encabezados frecuentes en plantillas regionales (p. ej. columnas "Lugar …" partidas) → nombre Kobo
+# unificado SOLO para la UI del editor; el archivo y las claves de fila siguen usando el nombre real.
+_SHEET_HEADER_DISPLAY_OVERRIDES: dict[str, str] = {
+    "lugar sonora": "Lugar de atención",
+    "lugar nuevo leon": "Lugar de atención",
+    "lugar chihuahua": "Lugar de atención",
+    "lugar otro": "Lugar de atención",
+    "lugar b c": "Lugar de atención",
+    "lugar b c s": "Lugar de atención",
+    "lugar bc": "Lugar de atención",
+    "lugar nl": "Lugar de atención",
+    "primera vez seg": "Primera vez o Seguimiento",
+    "asesoria previa hoy": "¿Se le ha brindado asesoría en uno de los módulos el día de hoy?",
+    "referencia": "Se hizo referencia",
+    "referencia?": "Se hizo referencia",
+    "a donde": "A dónde",
+    "motivo referencia": "Motivo Ref",
+    "motivo ref": "Motivo Ref",
+    "entrega de tratamiento": "¿Se hizo entrega de tratamiento/artículos al beneficiario o beneficiaria?",
+    "entrega trat": "¿Se hizo entrega de tratamiento/artículos al beneficiario o beneficiaria?",
+    "entrega de trat": "¿Se hizo entrega de tratamiento/artículos al beneficiario o beneficiaria?",
+    "insumos entregados categoria general": "Tratamiento",
+    "especifique que se entrega detalle del insumo": "Especifique qué se entrega",
+    "unidades entregadas cantidad en numero": "Unidades entregadas",
+    "diag lab": "Diagnóstico / Resultados Laboratorio",
+    "diag resultados lab": "Diagnóstico / Resultados Laboratorio",
+    "diagnostico fisio": "Fisioterapia",
+    "diag fisio": "Fisioterapia",
+    "diag fisio terapia": "Fisioterapia",
+    "diagnosticos": "Diagnóstico Medicina General",
+    "diagnosticos medicina general": "Diagnóstico Medicina General",
+}
+
+
+def _sheet_column_display_map(columns: list[str]) -> dict[str, str]:
+    """
+    Mapa nombre real de columna (en archivo) → etiqueta canónica Kobo para mostrar en cabeceras.
+    Si no hay mapeo o el nombre ya coincide, la clave no entra (el cliente usa el nombre real).
+    """
+    out: dict[str, str] = {}
+    for col in columns:
+        c = str(col or "").strip()
+        if not c:
+            continue
+        key = _normalize_header(c)
+        label = KOBO_ALIAS_TO_LABEL.get(key) or _SHEET_HEADER_DISPLAY_OVERRIDES.get(key)
+        if label and label != c:
+            out[c] = label
+    return out
 
 
 def _value_looks_missing(value: object) -> bool:
@@ -1183,6 +1383,47 @@ def _build_simple_check(columns: list[str], rows: list[dict[str, str]]) -> dict:
                 if _value_looks_missing(row.get(where_col, "")):
                     reference_destination_missing_rows.append(i + 2)
 
+    def _motivo_ref_value_is_otro(value: str) -> bool:
+        raw = str(value or "").strip()
+        if not raw:
+            return False
+        for tok in _tokenize_option_value(raw):
+            if _normalize_header(tok) == "otro":
+                return True
+        return _normalize_header(raw) == "otro"
+
+    fisio_motivo_ref_detail_rows: list[int] = []
+    motivo_ref_col = _find_column_name_by_alias(
+        columns,
+        ["Motivo Ref", "Motivo referencia", "Motivo_referencia", "Motivo Referido", "Motivo referido"],
+    )
+    motivo_esp_col = _find_column_name_by_alias(
+        columns,
+        [
+            "Especificar (motivo referido)",
+            "Especificar motivo referencia",
+            "Especificar m. ref. fisioterapia",
+            "Especificar m. ref. fisio",
+            "Motivo_especificar",
+        ],
+    )
+    service_col_simple = _find_column_name_by_alias(
+        columns,
+        ["Servicio que se brinda", "Servicio", "Especialidad", "Servicio_que_se_brinda"],
+    )
+    if ref_col and motivo_ref_col and service_col_simple and motivo_esp_col:
+        for i, row in enumerate(rows):
+            raw_svc = str(row.get(service_col_simple, "") or "").strip()
+            if not raw_svc or _normalize_service(raw_svc) != "Fisioterapia":
+                continue
+            ref_val2 = _normalize_header(str(row.get(ref_col, "") or ""))
+            if ref_val2 not in {"si", "sí"}:
+                continue
+            if not _motivo_ref_value_is_otro(str(row.get(motivo_ref_col, "") or "")):
+                continue
+            if _value_looks_missing(row.get(motivo_esp_col, "")):
+                fisio_motivo_ref_detail_rows.append(i + 2)
+
     invalid_option_rows: list[dict] = []
     ref_col_for_options = _find_column_name_by_alias(
         columns,
@@ -1257,6 +1498,7 @@ def _build_simple_check(columns: list[str], rows: list[dict[str, str]]) -> dict:
         and len(invalid_coords_rows) == 0
         and len(invalid_option_rows) == 0
         and len(reference_destination_missing_rows) == 0
+        and len(fisio_motivo_ref_detail_rows) == 0
         and len(service_missing_columns) == 0
     )
 
@@ -1272,6 +1514,7 @@ def _build_simple_check(columns: list[str], rows: list[dict[str, str]]) -> dict:
             "coordinates_rows": invalid_coords_rows[:30],
             "option_rows": invalid_option_rows[:20],
             "reference_destination_rows": reference_destination_missing_rows[:30],
+            "fisio_motivo_ref_detail_rows": fisio_motivo_ref_detail_rows[:30],
         },
         "service_conditional_missing": service_missing_columns,
         "human_message": (
@@ -1301,9 +1544,18 @@ def _check_columns_against_kobo(columns: list[str], rows: list[dict[str, str]] |
             continue
         unknown.append(col)
         if key:
-            close = difflib.get_close_matches(key, alias_keys, n=1, cutoff=0.72)
+            # 0,72 confundía CONS1 (inicial) con CONS (verbal) por compartir «consentimiento».
+            close = difflib.get_close_matches(key, alias_keys, n=1, cutoff=0.88)
             if close:
-                suggestions[col] = KOBO_ALIAS_TO_LABEL[close[0]]
+                sugg_lbl = KOBO_ALIAS_TO_LABEL[close[0]]
+                n_sugg = _normalize_header(sugg_lbl)
+                # No cruzar los dos campos de consentimiento.
+                if "inici" in key and "verbal" in n_sugg:
+                    pass
+                elif "verbal" in key and "inici" in n_sugg:
+                    pass
+                else:
+                    suggestions[col] = sugg_lbl
 
     missing_required = [lbl for lbl in labels_required if lbl not in matched]
     duplicates = [
@@ -1554,6 +1806,77 @@ def _disability_subcolumn_key_to_internal(raw_key: str) -> str:
     last = s.rsplit("/", 1)[-1].strip()
     t = re.sub(r"[^a-z0-9]+", "", _norm_text(last))
     return _DIS_TAIL_TO_INTERNAL.get(t, "")
+
+
+def _cell_affirmative_dis_yes(v: object) -> bool:
+    """Misma lógica que filling_rules._cell_affirmative_dis (Sí/1 en flags DIS_*)."""
+    s = str(v or "").strip().lower()
+    return s in ("1", "sí", "si", "yes", "y", "true", "x", "s")
+
+
+def _disability_multiselect_cell_is_placeholder(v: object) -> bool:
+    """Valores de export/histórico que equivalen a «sin respuesta» en la columna multiselect DIS."""
+    t = str(v or "").strip()
+    if not t:
+        return True
+    nk = _normalize_header(t)
+    return nk in {
+        "0",
+        "no",
+        "n",
+        "false",
+        "nd",
+        "n d",
+        "na",
+        "n a",
+        "noaplica",
+        "no aplica",
+        "ninguno",
+        "ninguna",
+        "sin dato",
+        "s d",
+    }
+
+
+def _is_disability_multiselect_sheet_column(col: str) -> bool:
+    nk = _normalize_header(str(col or ""))
+    return nk in {
+        "indicar si el paciente tiene alguna de las siguientes discapacidades",
+        "discapacidad",
+        "tipo de discapacidad",
+        "dis",
+    }
+
+
+def _sanitize_disability_sheet_display(
+    columns: list[str], rows: list[dict[str, str]]
+) -> tuple[list[str], list[dict[str, str]]]:
+    """
+    Muestra discapacidad sin «relleno» de export Kobo: subcolumnas …/Motriz en 0/No → vacío;
+    en la columna multiselect, solo placeholders (0, N/D, ninguno, etc.) → vacío.
+    Así el usuario ve celdas vacías y captura solo si aplica.
+    """
+    if not rows:
+        return columns, rows
+    targets = [
+        c
+        for c in columns
+        if _is_disability_multiselect_sheet_column(str(c)) or _disability_subcolumn_key_to_internal(str(c))
+    ]
+    if not targets:
+        return columns, rows
+    out_rows: list[dict[str, str]] = []
+    for row in rows:
+        nr = dict(row)
+        for c in targets:
+            cur = nr.get(c, "")
+            if _disability_subcolumn_key_to_internal(str(c)):
+                if not _cell_affirmative_dis_yes(cur):
+                    nr[c] = ""
+            elif _disability_multiselect_cell_is_placeholder(cur):
+                nr[c] = ""
+        out_rows.append(nr)
+    return columns, out_rows
 
 
 def _fisio_diag_tail_fuzzy(t: str) -> str:
@@ -2388,6 +2711,65 @@ def _autofill_asesoria_previa(columns: list[str], rows: list[dict[str, str]]) ->
     return columns, out_rows
 
 
+_ME_ML_COLUMN_ALIASES: list[str] = [
+    "¿Mujer embarazada o en periodo de lactancia?",
+    "Mujer embarazada o en periodo de lactancia",
+    "¿Embarazada / Lactancia?",
+    "Embarazada / Lactancia",
+    "ME_ML",
+    "Embarazada o lactancia",
+    "Embarazo/Lactancia",
+    "Embarazo / Lactancia",
+    "Embarazada/Lactancia?",
+]
+
+
+def _me_ml_cell_value_valid(raw: str) -> bool:
+    """Valores de catálogo Kobo: Embarazada, Lactancia, No Aplica (y alias numéricos heredados)."""
+    t = _normalize_header(str(raw or "").strip())
+    if not t:
+        return False
+    if t in {"embarazada", "embarazo", "1"}:
+        return True
+    if t in {"lactancia", "2 1", "2_1"}:
+        return True
+    if t in {"no aplica", "noaplica", "0", "na", "n a", "n/d", "nd"}:
+        return True
+    return False
+
+
+def _sex_value_is_female(raw: str) -> bool:
+    t = _normalize_header(str(raw or "").strip())
+    return t in {"femenino", "f", "female", "mujer", "2"}
+
+
+def _autofill_me_ml_by_sexo(columns: list[str], rows: list[dict[str, str]]) -> tuple[list[str], list[dict[str, str]]]:
+    """
+    Embarazo/lactancia (ME_ML):
+    - Sexo masculino (u otro no femenino): celda vacía si no hay valor válido o sobra texto.
+    - Sexo femenino sin dato válido (Embarazada / Lactancia / No Aplica): «No Aplica».
+    """
+    if not rows:
+        return columns, rows
+    sex_col = _find_column_name_by_alias(columns, ["Sexo", "SEX"])
+    me_col = _find_column_name_by_alias(columns, _ME_ML_COLUMN_ALIASES)
+    if not me_col:
+        return columns, rows
+    out_rows: list[dict[str, str]] = []
+    for row in rows:
+        nr = dict(row)
+        sex_raw = str(nr.get(sex_col, "") or "").strip() if sex_col else ""
+        cur = str(nr.get(me_col, "") or "").strip()
+        if _sex_value_is_female(sex_raw):
+            if not _me_ml_cell_value_valid(cur):
+                nr[me_col] = "No Aplica"
+        else:
+            if cur:
+                nr[me_col] = ""
+        out_rows.append(nr)
+    return columns, out_rows
+
+
 def _load_records_from_file(path: Path) -> list[dict[str, str]]:
     suffix = path.suffix.lower()
     if suffix in {".xlsx", ".xls"}:
@@ -3178,11 +3560,47 @@ def index():
     return send_from_directory(str(STATIC_DIR), "index.html")
 
 
+@app.route("/api/treatment-suggestions", methods=["POST"])
+def api_treatment_suggestions():
+    if not suggest_treatment:
+        return jsonify({"ok": False, "error": "Módulo de sugerencias no disponible"}), 501
+    return jsonify(suggest_treatment(request.get_json(silent=True) or {}))
+
+
+@app.route("/api/treatment-cohort/stats", methods=["GET"])
+def api_treatment_cohort_stats():
+    if not cohort_stats:
+        return jsonify({"ok": False, "error": "Módulo no disponible"}), 501
+    return jsonify(cohort_stats())
+
+
+@app.route("/api/treatment-cohort/rebuild", methods=["POST"])
+def api_treatment_cohort_rebuild():
+    if not build_and_write:
+        return jsonify({"ok": False, "error": "Módulo no disponible"}), 501
+    try:
+        data = build_and_write()
+        return jsonify({"ok": True, "fila_tto_con_dosis": data.get("fila_tto_con_dosis"), "file_count": data.get("file_count")})
+    except Exception as ex:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(ex)}), 500
+
+
 @app.route("/api/files", methods=["GET"])
 def list_files():
     status = (request.args.get("status") or "").strip().lower()
     status_filter = status if status in VALID_STATUSES else None
-    files = [_augment(f) for f in list_file_records(status_filter)]
+    raw = list_file_records(status_filter)
+    fids = [f["id"] for f in raw if f.get("id") is not None]
+    kobo_stats = kobo_submission_stats_by_file_ids(fids)
+    files: list[dict] = []
+    for f in raw:
+        aug = _augment(f)
+        fid = aug.get("id")
+        st = kobo_stats.get(int(fid)) if fid is not None else None
+        aug["kobo_api_sent"] = bool(st and st.get("kobo_api_sent"))
+        last_at = (st or {}).get("kobo_api_last_submitted_at")
+        aug["kobo_api_last_submitted_at"] = str(last_at) if last_at is not None else None
+        files.append(aug)
     return jsonify({"ok": True, "files": files})
 
 
@@ -3325,6 +3743,11 @@ def change_status(file_id: int):
     superseded = []
     if new_status == "validado":
         superseded = supersede_matching_files(file_id, entry["original_name"])
+        if schedule_rebuild_if_quiet:
+            try:
+                schedule_rebuild_if_quiet()
+            except Exception:
+                pass
 
     return jsonify({"ok": True, "file": _augment(updated), "superseded": superseded})
 
@@ -3355,6 +3778,12 @@ def validate_file(file_id: int):
     updated = mark_file_validated(file_id, validated_by=validated_by, notes=notes) or entry
 
     superseded = supersede_matching_files(file_id, entry["original_name"])
+
+    if schedule_rebuild_if_quiet:
+        try:
+            schedule_rebuild_if_quiet()
+        except Exception:
+            pass
 
     return jsonify({"ok": True, "file": _augment(updated), "superseded": superseded})
 
@@ -3489,12 +3918,14 @@ def get_file_sheet(file_id: int):
     columns, rows_out = _ensure_lat_lon_from_coordinates(columns, rows_out)
     columns, rows_out = _ensure_service_conditional_columns(columns, rows_out)
     columns, rows_out = _autofill_asesoria_previa(columns, rows_out)
+    columns, rows_out = _autofill_me_ml_by_sexo(columns, rows_out)
     columns, rows_out = _merge_tratamiento_columns(columns, rows_out)
     columns = _reorder_treatment_next_to_diagnostico(columns)
     columns, rows_out = _sanitize_lugar_atencion_missing_values(columns, rows_out)
     columns, rows_out = _ensure_lugar_atencion_by_estado(columns, rows_out)
     columns, rows_out = _normalize_diagnostico_mg_values(columns, rows_out)
     columns = _reorder_especificar_next_to_diagnostico_mg(columns)
+    columns, rows_out = _sanitize_disability_sheet_display(columns, rows_out)
     # Persistir auto-completado de columnas para que queden guardadas en el archivo/base.
     if columns != initial_columns or rows_out != initial_rows:
         try:
@@ -3516,6 +3947,7 @@ def get_file_sheet(file_id: int):
             "lock": lock_info,
             "lock_ttl_seconds": EDIT_LOCK_TTL_SECONDS,
             "columns": columns,
+            "column_display": _sheet_column_display_map(columns),
             "columns_check": columns_check,
             "rows": rows_out,
         }
@@ -3565,11 +3997,13 @@ def put_file_sheet(file_id: int):
         return jsonify({"error": rerr or "Solicitud inválida."}), 400
     columns, rows = _ensure_service_conditional_columns(columns, rows)
     columns, rows = _autofill_asesoria_previa(columns, rows)
+    columns, rows = _autofill_me_ml_by_sexo(columns, rows)
     columns, rows = _merge_tratamiento_columns(columns, rows)
     columns = _reorder_treatment_next_to_diagnostico(columns)
     columns, rows = _sanitize_lugar_atencion_missing_values(columns, rows)
     columns, rows = _normalize_diagnostico_mg_values(columns, rows)
     columns = _reorder_especificar_next_to_diagnostico_mg(columns)
+    columns, rows = _sanitize_disability_sheet_display(columns, rows)
 
     try:
         _write_sheet_to_path(path, format_key, columns, rows)
@@ -3611,6 +4045,7 @@ def put_file_sheet(file_id: int):
             "ok": True,
             "file": _augment(updated),
             "row_count": nrows,
+            "column_display": _sheet_column_display_map(columns),
             "lock": {"locked_by": editor_name, "locked_at": datetime.utcnow().isoformat()},
         }
     )
@@ -3811,12 +4246,15 @@ def submit_file_rows_to_kobo(file_id: int):
         columns, rows = _ensure_service_conditional_columns(columns, rows)
         columns, rows = _autofill_asesoria_previa(columns, rows)
 
+    columns, rows = _autofill_me_ml_by_sexo(columns, rows)
+
     columns, rows = _merge_tratamiento_columns(columns, rows)
     columns = _reorder_treatment_next_to_diagnostico(columns)
     columns, rows = _sanitize_lugar_atencion_missing_values(columns, rows)
     columns, rows = _ensure_lugar_atencion_by_estado(columns, rows)
     columns, rows = _normalize_diagnostico_mg_values(columns, rows)
     columns = _reorder_especificar_next_to_diagnostico_mg(columns)
+    columns, rows = _sanitize_disability_sheet_display(columns, rows)
 
     if not rows:
         return jsonify({"ok": False, "error": "No hay filas para enviar"}), 400

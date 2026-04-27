@@ -725,6 +725,7 @@
           </button>
           <span class="sheet-sep" aria-hidden="true"></span>
           <button type="button" class="btn btn-outline-blue" id="sheetApplySuggestions" style="display:none">Corregir nombres sugeridos</button>
+          <button type="button" class="btn btn-outline" id="sheetOpenTreatmentSuggest" title="Sugerencias según diagnóstico, edad e histórico (validados)">Sugerencias tratamiento</button>
           <button type="button" class="btn btn-outline" id="sheetOpenGuide">Ver guía</button>
           <button type="button" class="btn btn-outline-purple" id="sheetSubmitKobo">Subir a Kobo</button>
           <button type="button" class="btn btn-outline-green" id="sheetMarkEditedValidated">Marcar Editado Validado</button>
@@ -733,6 +734,15 @@
         </div>
       </header>
       <div id="sheetColumnsCheck" class="sheet-columns-check"></div>
+      <div id="sheetTreatmentPanel" class="sheet-treatment-panel" style="display:none" role="region" aria-label="Sugerencias de tratamiento">
+        <div class="sheet-treatment-head">
+          <strong>Completar tratamiento</strong>
+          <span class="sheet-treatment-legal">Asistencia; revisar con protocolo de la brigada o médico. No es prescripción automática.</span>
+        </div>
+        <p class="sheet-treatment-row" id="sheetTreatmentRowInfo"></p>
+        <div id="sheetTreatmentList" class="sheet-treatment-list"></div>
+        <p class="sheet-treatment-foot" id="sheetTreatmentCohortInfo"></p>
+      </div>
       <div class="sheet-editor-meta">
         <div class="form-group form-group-tight">
           <label for="sheetOriginalName">Nombre del archivo (visible) <span class="required">*</span></label>

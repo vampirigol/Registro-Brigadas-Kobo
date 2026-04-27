@@ -12,6 +12,7 @@ import pandas as pd
 # Columnas internas (passthrough si el Excel ya las tiene)
 INTERNAL_COLUMNS = {
     "NAME", "Fecha_de_atenci_n", "SEX", "Servicio_que_se_brinda", "Diagnostico_Motivo",
+    "Motivo_especificar",
     "HEI", "WEI", "Resultados_Lab_Insumos", "ME_ML", "Tratamiento", "Plan_de_Tratamiento",
     "Estado_paciente", "Procedimiento_dental",
     "esp_odontologia", "esp_fisioterapia", "esp_medicina_general",
@@ -129,6 +130,10 @@ EXCEL_TO_INTERNAL = {
     "Motivo_referencia": "Motivo_referencia",
     "Motivo Referido": "Motivo_referencia",
     "Motivo Referencia": "Motivo_referencia",
+    "Especificar (motivo referido)": "Motivo_especificar",
+    "Especificar motivo referencia": "Motivo_especificar",
+    "Especificar m. ref. fisioterapia": "Motivo_especificar",
+    "Motivo_especificar": "Motivo_especificar",
     "Motivo": "Motivo_referencia",
     "Servicio Brindado": "Servicio_que_se_brinda",
     "Especialidad": "Servicio_que_se_brinda",
@@ -395,6 +400,7 @@ OUTPUT_COLUMNS = [
     "Referencia",
     "Referencia_donde",
     "Motivo_referencia",
+    "Motivo_especificar",
     "CGR",
     "estatus_migra",
     "followup",
@@ -603,6 +609,8 @@ def load_excel_to_records(
                 rec["Referencia_donde"] = value
             elif internal == "Motivo_referencia":
                 rec["Motivo_referencia"] = value
+            elif internal == "Motivo_especificar":
+                rec["Motivo_especificar"] = value
             elif internal == "entrega_tx":
                 rec["entrega_tx"] = _normalize_si_no(value) or value
             elif internal == "CGR":

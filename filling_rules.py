@@ -904,10 +904,24 @@ def apply_rules(
     # ── VALORES FIJOS ────────────────────────────────────────────────────────
     # CONS1: Toma de consentimiento → SIEMPRE "Sí" (value="1")
     out["CONS1"] = "1"
-    # CONS: Consentimiento verbal al final → SIEMPRE "Sí"
-    # Se envía "Sí" (etiqueta visible) para que el JS haga coincidencia por texto del span.
-    # Si el formulario usa value="1", el fallback de _fill_field_in_frame lo cubre también.
-    out["CONS"] = "Sí"
+    # CONS: consentimiento informado verbal. Si la hoja/Excel trae Sí/No, se respeta; si no, "Sí".
+    _cons_raw = str(record.get("CONS", "")).strip()
+    if _cons_raw:
+        _sn = _parse_si_no(_cons_raw)
+        if _sn == "1":
+            out["CONS"] = "Sí"
+        elif _sn == "0":
+            out["CONS"] = "No"
+        else:
+            t = _cons_raw.lower().replace("sí", "si")
+            if t in ("si", "sí", "s"):
+                out["CONS"] = "Sí"
+            elif t in ("no", "n"):
+                out["CONS"] = "No"
+            else:
+                out["CONS"] = _cons_raw
+    else:
+        out["CONS"] = "Sí"
     out["Modalidad_de_la_atenci_n"] = _map_modalidad_excel_to_kobo(record)
     # Nacionalidad: México por defecto. NATOT (texto bajo el mismo bloque) solo si aplica; no
     # duplicar "México" en NAT y en NATOT salvo que venga en el registro o sea necesario.

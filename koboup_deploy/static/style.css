@@ -668,6 +668,35 @@ body::after {
 .file-row-edited-validated:hover {
   background: linear-gradient(90deg, rgba(34,197,94,0.18), rgba(34,197,94,0.06) 24%, rgba(59,130,246,0.02) 75%);
 }
+/* Bitácora: al menos un envío exitoso a Kobo por API (distinto de «Editado validado») */
+.file-row-kobo-api-sent {
+  border-left: 4px solid #6366f1;
+  background: linear-gradient(90deg, rgba(99,102,241,0.11), rgba(99,102,241,0.04) 26%, transparent 65%);
+}
+.file-row-kobo-api-sent:hover {
+  background: linear-gradient(90deg, rgba(99,102,241,0.16), rgba(99,102,241,0.06) 26%, rgba(59,130,246,0.02) 75%);
+}
+.file-row-kobo-api-sent.file-row-edited-validated {
+  border-left: 4px solid #6366f1;
+  background: linear-gradient(
+    90deg,
+    rgba(99,102,241,0.12) 0%,
+    rgba(99,102,241,0.05) 18%,
+    rgba(34,197,94,0.1) 18%,
+    rgba(34,197,94,0.04) 42%,
+    transparent 72%
+  );
+}
+.file-row-kobo-api-sent.file-row-edited-validated:hover {
+  background: linear-gradient(
+    90deg,
+    rgba(99,102,241,0.16) 0%,
+    rgba(99,102,241,0.07) 18%,
+    rgba(34,197,94,0.14) 18%,
+    rgba(34,197,94,0.06) 42%,
+    rgba(59,130,246,0.02) 85%
+  );
+}
 @keyframes fileEditingPulse {
   0%, 100% { box-shadow: inset 0 0 0 0 rgba(245,158,11,0.18); }
   50% { box-shadow: inset 0 0 0 999px rgba(245,158,11,0.08); }
@@ -747,6 +776,14 @@ body::after {
   background: rgba(34, 197, 94, 0.14);
   color: #166534;
   border: 1px solid rgba(34, 197, 94, 0.36);
+}
+.badge-kobo-api-sent {
+  background: rgba(99, 102, 241, 0.15);
+  color: #3730a3;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  text-transform: none;
+  font-weight: 650;
+  letter-spacing: 0.01em;
 }
 @keyframes badgeEditingBlink {
   50% { opacity: 0.45; }
@@ -2019,6 +2056,28 @@ svg.pf-icon.pf-error { color: var(--red); }
   background: #fff;
   box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
 }
+/* Cabecera con nombre Kobo (visual) + nombre real en el archivo; no edita el encabezado en disco. */
+.sheet-header-mapped {
+  display: block;
+  padding: 0.1rem 0.35rem 0.25rem;
+  min-height: 2.1rem;
+  line-height: 1.25;
+}
+.sheet-header-mapped-primary {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-word;
+}
+.sheet-header-mapped-file {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-3, #9ca3af);
+  margin-top: 0.1rem;
+  word-break: break-word;
+}
 .sheet-cell-selected {
   background: #dbeafe !important;
   border-color: #60a5fa !important;
@@ -2028,6 +2087,35 @@ svg.pf-icon.pf-error { color: var(--red); }
   color: #94a3b8 !important;
   cursor: not-allowed;
 }
+/* Tratamiento sin dosis o vacío: fila con aviso visual */
+.sheet-table tbody tr.sheet-row-tto-warn {
+  background: #fffbeb;
+}
+.sheet-treatment-panel {
+  margin: 0.4rem 0.75rem 0.5rem 0.75rem;
+  padding: 0.6rem 0.75rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  max-width: 56rem;
+}
+.sheet-treatment-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem; }
+.sheet-treatment-legal { font-size: 0.72rem; color: #64748b; }
+.sheet-treatment-row { font-size: 0.8rem; color: #334155; margin: 0.2rem 0; }
+.sheet-treatment-list { min-height: 0.5rem; }
+.sheet-treatment-ul { list-style: none; margin: 0.35rem 0 0; padding: 0; }
+.sheet-treatment-li {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  margin-bottom: 0.45rem;
+  background: #fff;
+}
+.sheet-treatment-txt { font-size: 0.78rem; line-height: 1.4; color: #1e293b; white-space: pre-wrap; word-break: break-word; }
+.sheet-treatment-meta { font-size: 0.68rem; color: #64748b; margin: 0.2rem 0; }
+.sheet-treatment-apply { margin-top: 0.35rem; }
+.sheet-treatment-err, .sheet-treatment-empty { font-size: 0.8rem; color: #64748b; }
+.sheet-treatment-foot { font-size: 0.68rem; color: #94a3b8; margin: 0.4rem 0 0; }
 .sheet-col-h {
   position: relative;
   overflow: visible;

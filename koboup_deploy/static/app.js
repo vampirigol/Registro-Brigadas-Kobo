@@ -128,6 +128,11 @@
   var sheetApplySuggestions = document.getElementById('sheetApplySuggestions');
   var sheetToggleColumnMode = document.getElementById('sheetToggleColumnMode');
   var sheetOpenGuide = document.getElementById('sheetOpenGuide');
+  var sheetOpenTreatmentSuggest = document.getElementById('sheetOpenTreatmentSuggest');
+  var sheetTreatmentPanel = document.getElementById('sheetTreatmentPanel');
+  var sheetTreatmentList = document.getElementById('sheetTreatmentList');
+  var sheetTreatmentRowInfo = document.getElementById('sheetTreatmentRowInfo');
+  var sheetTreatmentCohortInfo = document.getElementById('sheetTreatmentCohortInfo');
   var sheetSubmitKobo = document.getElementById('sheetSubmitKobo');
   var sheetMarkEditedValidated = document.getElementById('sheetMarkEditedValidated');
   var sheetSave = document.getElementById('sheetSave');
@@ -1100,6 +1105,7 @@
       var isSuperseded = f.status === 'reemplazado';
       var isEditing = !!f.is_editing;
       var isEditedValidated = !!f.edited_validated;
+      var isKoboApiSent = !!f.kobo_api_sent;
 
       var actions = [];
       if (isSuperseded) {
@@ -1132,6 +1138,11 @@
       }
 
       var meta = '<span class="badge ' + statusBadgeClass(f.status) + '">' + statusLabel(f.status) + '</span>';
+      if (isKoboApiSent) {
+        meta += '<span class="sep">·</span><span class="badge badge-kobo-api-sent" title="' + escAttr(
+          f.kobo_api_last_submitted_at ? ('Último envío API: ' + f.kobo_api_last_submitted_at) : 'Con envío a Kobo por API'
+        ) + '">Envío a Kobo (API)</span>';
+      }
       if (isEditedValidated) {
         meta += '<span class="sep">·</span><span class="badge badge-edited-validated">Editado validado</span>';
       }
@@ -1160,7 +1171,7 @@
           '</div>';
       }
 
-      return '<div class="file-row' + (isSuperseded ? ' file-row-superseded' : '') + (isEditing ? ' file-row-editing' : '') + (isEditedValidated ? ' file-row-edited-validated' : '') + '" data-id="' + f.id + '">' +
+      return '<div class="file-row' + (isSuperseded ? ' file-row-superseded' : '') + (isEditing ? ' file-row-editing' : '') + (isKoboApiSent ? ' file-row-kobo-api-sent' : '') + (isEditedValidated ? ' file-row-edited-validated' : '') + '" data-id="' + f.id + '">' +
         '<div class="file-icon-wrap ' + iconClass + (isSuperseded ? ' icon-superseded' : '') + '">' + iconText + '</div>' +
         '<div class="file-info">' +
           '<div class="file-name' + (isSuperseded ? ' name-superseded' : '') + '">' + esc(f.original_name || f.stored_name) + '</div>' +
@@ -1507,6 +1518,9 @@
     if (isNaN(ci) || ci < 0 || ci >= sheetState.columns.length) return false;
     var colName = sheetState.columns[ci];
     if (!confirm('¿Eliminar la columna "' + colName + '"?')) return false;
+    if (sheetState.columnDisplay && Object.prototype.hasOwnProperty.call(sheetState.columnDisplay, colName)) {
+      delete sheetState.columnDisplay[colName];
+    }
     sheetState.columns.splice(ci, 1);
     sheetState.rows.forEach(function (row) { if (row) delete row[colName]; });
     if (sheetState.columns.length === 0) sheetState.rows = [];
@@ -1583,6 +1597,11 @@
       return;
     }
     sheetState.columns[index] = newName;
+    if (sheetState.columnDisplay) {
+      if (Object.prototype.hasOwnProperty.call(sheetState.columnDisplay, oldName)) {
+        delete sheetState.columnDisplay[oldName];
+      }
+    }
     sheetState.rows.forEach(function (row) {
       if (!row) return;
       row[newName] = (row[oldName] != null && row[oldName] !== undefined) ? String(row[oldName]) : '';
@@ -1742,7 +1761,10 @@
     if (!sheetColRemove || !sheetState) return;
     var s = '<option value="">— Quitar columna —</option>';
     for (var i = 0; i < sheetState.columns.length; i += 1) {
-      s += '<option value="' + i + '">' + esc(sheetState.columns[i]) + '</option>';
+      var c = sheetState.columns[i];
+      var disp = sheetState.columnDisplay && sheetState.columnDisplay[c];
+      var optLabel = disp && disp !== c ? (disp + ' — ' + c) : c;
+      s += '<option value="' + i + '">' + esc(optLabel) + '</option>';
     }
     sheetColRemove.innerHTML = s;
   }
@@ -1816,9 +1838,27 @@
     return n;
   }
 
-  var MED_GENERAL_COLS = [
+  /** DIS + detalle: siempre editables en la hoja (la validación Kobo sigue ligada a medicina general). */
+  var DISABILITY_SHEET_EDIT_ALIASES = [
+    'Indicar si el paciente tiene alguna de las siguientes discapacidades',
     'Discapacidad',
+    'DIS',
     'Especificar discapacidad',
+    'Especificar_discapacidad'
+  ];
+
+  function colIsDisabilityBinarySubcolumn(colTitle) {
+    var raw = String(colTitle || '');
+    if (raw.indexOf('/') < 0) return false;
+    var segs = raw.split('/').map(function (s) { return String(s || '').trim(); }).filter(Boolean);
+    if (segs.length < 2) return false;
+    var parent = normColName(segs.slice(0, -1).join(' '));
+    if (parent.indexOf('discapacidad') < 0) return false;
+    var last = normColName(segs[segs.length - 1]);
+    return ['motriz', 'visual', 'auditiva', 'intelectual', 'otra'].indexOf(last) >= 0;
+  }
+
+  var MED_GENERAL_COLS = DISABILITY_SHEET_EDIT_ALIASES.concat([
     'Diagnóstico Medicina General',
     'Diagnostico Medicina General',
     'Diagnóstico Med',
@@ -1827,7 +1867,7 @@
     'Diagnosticos',
     'Diagnósticos Medicina General',
     'Diagnosticos Medicina General'
-  ];
+  ]);
   var MED_GENERAL_COLS_FOR_CLEAR = MED_GENERAL_COLS.concat([
     'Especificar diagnóstico (Medicina General)',
     'Especificar diagnóstico',
@@ -1841,6 +1881,16 @@
     'Especificar Diagnóstico Medicina General',
     'Especificar Diagnostico Medicina General',
     'dxesp'
+  ];
+  var TREATMENT_SUGG_ALIASES = [
+    'Tratamiento',
+    'Tratamiento indicado',
+    'Tx',
+    'TX',
+    'Medicamentos (Nombres específicos)',
+    'Medicamentos (Nombres especificos)',
+    'Medicamentos / Procedimiento',
+    'Medicamentos'
   ];
   var MG_DIAGNOSIS_COLUMN_ALIASES = [
     'Diagnóstico Medicina General',
@@ -1896,6 +1946,21 @@
     'Plan de tratamiento (fisioterapia u otros)',
     'Plan_de_Tratamiento'
   ];
+  var MOTIVO_REF_ALIASES = [
+    'Motivo Ref',
+    'Motivo referencia',
+    'Motivo_referencia',
+    'Motivo Referido',
+    'Motivo referido'
+  ];
+  var ESPECIFICAR_MOTIVO_REF_FISIO_LABEL = 'Especificar (motivo referido)';
+  var ESPECIFICAR_MOTIVO_REF_FISIO_ALIASES = [
+    ESPECIFICAR_MOTIVO_REF_FISIO_LABEL,
+    'Especificar motivo referencia',
+    'Especificar m. ref. fisioterapia',
+    'Especificar m. ref. fisio',
+    'Motivo_especificar'
+  ];
 
   function colIsPlanTratamientoFisioColumn(colTitle) {
     if (!colTitle) return false;
@@ -1937,6 +2002,18 @@
     'Especificar lo que se entrega al beneficiario',
     'Especificar lo que se entrega',
     'Especificar_lo_que_se_entrega_'
+  ];
+  /** Alineado con server.py _ME_ML_COLUMN_ALIASES */
+  var ME_ML_ALIASES = [
+    '¿Mujer embarazada o en periodo de lactancia?',
+    'Mujer embarazada o en periodo de lactancia',
+    '¿Embarazada / Lactancia?',
+    'Embarazada / Lactancia',
+    'ME_ML',
+    'Embarazada o lactancia',
+    'Embarazo/Lactancia',
+    'Embarazo / Lactancia',
+    'Embarazada/Lactancia?'
   ];
 
   function rowValueByAliases(row, columns, aliases) {
@@ -1991,7 +2068,11 @@
 
   function meMlNoAplica(v) {
     var n = normColName(v);
-    return n === 'no aplica' || n === '0' || n === 'na' || n === 'n a' || n === 'n/a';
+    return n === 'no aplica' || n === 'noaplica' || n === '0' || n === 'na' || n === 'n a' || n === 'n/a' || n === 'n/d' || n === 'nd';
+  }
+
+  function meMlCellValueValid(v) {
+    return meMlEmbarazo(v) || meMlLactancia(v) || meMlNoAplica(v);
   }
 
   function discapacidadOtra(v) {
@@ -2137,20 +2218,18 @@
     };
 
     var sexVal = rowValueByAliases(row, columns, ['Sexo', 'SEX']);
-    var meMlCol = _pickColumnByAliases(columns, ['¿Embarazada / Lactancia?', 'ME_ML', 'Embarazada / Lactancia']);
+    var meMlCol = _pickColumnByAliases(columns, ME_ML_ALIASES);
     if (meMlCol) {
       var meMlRaw = row[meMlCol];
+      var meTrim = String(meMlRaw == null ? '' : meMlRaw).trim();
       if (!femaleLike(sexVal)) {
-        if (String(meMlRaw == null ? '' : meMlRaw).trim() !== 'No Aplica') {
-          row[meMlCol] = 'No Aplica';
+        if (meTrim !== '') {
+          row[meMlCol] = '';
           changed = true;
         }
-      } else {
-        var hasKnownFemaleState = meMlEmbarazo(meMlRaw) || meMlLactancia(meMlRaw) || meMlNoAplica(meMlRaw);
-        if (!hasKnownFemaleState) {
-          row[meMlCol] = 'No Aplica';
-          changed = true;
-        }
+      } else if (!meMlCellValueValid(meMlRaw)) {
+        row[meMlCol] = 'No Aplica';
+        if (meTrim !== 'No Aplica') changed = true;
       }
     }
 
@@ -2208,6 +2287,12 @@
       }
     }
 
+    var motEspCol = _pickColumnByAliases(columns, ESPECIFICAR_MOTIVO_REF_FISIO_ALIASES);
+    if (motEspCol && !shouldEnableEspecificarMotivoRefFisioCell(row, columns) && !looksMissingValue(row[motEspCol])) {
+      row[motEspCol] = '';
+      changed = true;
+    }
+
     return changed;
   }
 
@@ -2217,19 +2302,13 @@
     ]));
     var sexVal = rowValueByAliases(row, columns, ['Sexo', 'SEX']);
     var refVal = rowValueByAliases(row, columns, ['Se hizo referencia', '¿Se hizo referencia?', 'Referencia', 'REF']);
-    var meMlVal = rowValueByAliases(row, columns, ['¿Embarazada / Lactancia?', 'ME_ML', 'Embarazada / Lactancia']);
-    var disVal = rowValueByAliases(row, columns, [
-      'Indicar si el paciente tiene alguna de las siguientes discapacidades',
-      'Discapacidad',
-      'DIS'
-    ]);
+    var meMlVal = rowValueByAliases(row, columns, ME_ML_ALIASES);
     var ageVal = rowValueByAliases(row, columns, ['Edad', 'AGE']);
     var ageNum = Number(String(ageVal || '').replace(',', '.'));
     var hasRef = yesLike(refVal);
     var isFemale = femaleLike(sexVal);
     var isPregnant = meMlEmbarazo(meMlVal);
     var isLactating = meMlLactancia(meMlVal);
-    var isDisabilityOther = discapacidadOtra(disVal);
 
     var referenciaCols = [
       '¿A dónde?', 'A dónde', 'A donde',
@@ -2238,15 +2317,8 @@
     ];
 
     // Condicionales por especialidad
-    if (colIsAny(colName, ['Especificar discapacidad', 'Especificar_discapacidad'])) {
-      return service === 'medicina general' && isDisabilityOther;
-    }
-    if (colIsAny(colName, [
-      'Indicar si el paciente tiene alguna de las siguientes discapacidades',
-      'Discapacidad',
-      'DIS'
-    ])) {
-      return service === 'medicina general';
+    if (colIsAny(colName, DISABILITY_SHEET_EDIT_ALIASES) || colIsDisabilityBinarySubcolumn(colName)) {
+      return true;
     }
     if (colIsAny(colName, MG_DIAGNOSIS_ESPECIFICAR_ALIASES) && !colIsAny(colName, ['Especificar discapacidad', 'Especificar_discapacidad', 'Especificar referencia'])) {
       if (service !== 'medicina general') return false;
@@ -2258,23 +2330,29 @@
     if (isEspecificarEntregaBeneficiarioColumn(colName)) {
       return rowEspecifiqueEntregaIsOtro(row, columns);
     }
-    if (colIsAny(colName, MED_GENERAL_COLS)) return service === 'medicina general';
+    if (colIsAny(colName, MED_GENERAL_COLS) && !colIsAny(colName, DISABILITY_SHEET_EDIT_ALIASES) && !colIsDisabilityBinarySubcolumn(colName)) {
+      return service === 'medicina general';
+    }
     if (colIsAny(colName, DENTAL_COLS)) return service === 'dental';
     if (colIsPlanTratamientoFisioColumn(colName)) return service === 'fisioterapia';
     if (colIsAny(colName, FISIO_COLS)) return service === 'fisioterapia';
     if (colIsAny(colName, OFTALMO_COLS)) return service === 'oftalmologia';
     if (colIsAny(colName, LAB_COLS)) return service === 'laboratorios';
 
-    // Referencias (no aplica para fisioterapia y depende de "Se hizo referencia")
-    if (colIsAny(colName, ['Se hizo referencia', '¿Se hizo referencia?', 'Referencia'])) {
-      return service !== 'fisioterapia';
+    if (isEspecificarMotivoRefFisioColumn(colName)) {
+      return shouldEnableEspecificarMotivoRefFisioCell(row, columns);
+    }
+
+    // Referencias: "Motivo Ref", "A dónde", etc. si hay referencia; también aplica a fisioterapia
+    if (colIsAny(colName, ['Se hizo referencia', '¿Se hizo referencia?', 'Referencia', 'REF'])) {
+      return true;
     }
     if (colIsAny(colName, referenciaCols)) {
-      return service !== 'fisioterapia' && hasRef;
+      return hasRef;
     }
 
     // Embarazo / lactancia y suplementos
-    if (colIsAny(colName, ['¿Embarazada / Lactancia?', 'ME_ML', 'Embarazada / Lactancia'])) {
+    if (colIsAny(colName, ME_ML_ALIASES)) {
       return isFemale;
     }
     if (colIsAny(colName, ['Suplemento hierro', 'FE'])) {
@@ -2294,13 +2372,23 @@
   }
 
   function isRuleTriggerColumn(colName) {
+    if (colIsAny(colName, ME_ML_ALIASES)) return true;
+    if (colIsAny(colName, DISABILITY_SHEET_EDIT_ALIASES) || colIsDisabilityBinarySubcolumn(colName)) return true;
+    if (colIsAny(colName, [
+      'Toma de consentimiento antes de iniciar la consulta',
+      'Toma consentimiento inicial',
+      'CONS1',
+      '¿Se tomó consentimiento informado de forma verbal?',
+      'Se tomó consentimiento informado de forma verbal',
+      'CONS',
+      'Consentimiento informado verbal'
+    ])) return true;
     return colIsAny(colName, [
       'Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda',
       'Sexo', 'SEX',
-      'Indicar si el paciente tiene alguna de las siguientes discapacidades',
-      'Discapacidad', 'DIS',
       'Se hizo referencia', '¿Se hizo referencia?', 'Referencia', 'REF',
-      '¿Embarazada / Lactancia?', 'ME_ML', 'Embarazada / Lactancia',
+      'Motivo Ref', 'Motivo referencia', 'Motivo_referencia', 'Motivo Referido', 'Motivo referido',
+      'Especificar (motivo referido)', 'Especificar motivo referencia', 'Motivo_especificar',
       'Edad', 'AGE',
       'Diagnóstico Medicina General', 'Diagnostico Medicina General',
       'Diagnósticos', 'Diagnosticos', 'Diagnósticos Medicina General', 'Diagnosticos Medicina General',
@@ -2420,6 +2508,7 @@
     if (colIsAny(colName, MED_GENERAL_COLS)) return 'medicina general';
     if (colIsAny(colName, DENTAL_COLS)) return 'dental';
     if (colIsPlanTratamientoFisioColumn(colName)) return 'fisioterapia';
+    if (isEspecificarMotivoRefFisioColumn(colName)) return 'fisioterapia';
     if (colIsAny(colName, FISIO_COLS)) return 'fisioterapia';
     if (colIsAny(colName, OFTALMO_COLS)) return 'oftalmologia';
     if (colIsAny(colName, LAB_COLS)) return 'laboratorios';
@@ -2527,6 +2616,89 @@
     if (!isEspecificarEntregaBeneficiarioColumn(colName)) return true;
     if (anyRowEspecifiqueEntregaIsOtro(rows, columns)) return true;
     return hasDataInColumn(colName, rows);
+  }
+
+  function isEspecificarMotivoRefFisioColumn(colName) {
+    return colIsAny(colName, ESPECIFICAR_MOTIVO_REF_FISIO_ALIASES);
+  }
+
+  function rowMotivoRefIsOtro(row, columns) {
+    if (!row) return false;
+    var mcol = _pickColumnByAliases(columns, MOTIVO_REF_ALIASES);
+    if (!mcol) return false;
+    var raw = String((row[mcol] == null ? '' : row[mcol]) || '').trim();
+    if (!raw) return false;
+    return rowDiagnosisTokensIncludeOtro(raw) || normColName(raw) === 'otro';
+  }
+
+  function shouldEnableEspecificarMotivoRefFisioCell(row, columns) {
+    var service = normalizeServiceName(rowValueByAliases(row, columns, [
+      'Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda'
+    ]));
+    if (service !== 'fisioterapia') return false;
+    var refVal = rowValueByAliases(row, columns, [
+      'Se hizo referencia', '¿Se hizo referencia?', 'Referencia', 'REF'
+    ]);
+    if (!yesLike(refVal)) return false;
+    return rowMotivoRefIsOtro(row, columns);
+  }
+
+  function anyRowEspecificarMotivoRefFisioNeeded(rows, columns) {
+    if (!rows || !rows.length) return false;
+    for (var i = 0; i < rows.length; i += 1) {
+      if (shouldEnableEspecificarMotivoRefFisioCell(rows[i], columns)) return true;
+    }
+    return false;
+  }
+
+  function shouldShowEspecificarMotivoRefFisioColumn(colName, columns, rows) {
+    if (!isEspecificarMotivoRefFisioColumn(colName)) return true;
+    if (anyRowEspecificarMotivoRefFisioNeeded(rows, columns)) return true;
+    return hasDataInColumn(colName, rows);
+  }
+
+  function ensureEspecificarMotivoRefFisioColumn() {
+    if (!sheetState || !sheetState.columns || !sheetState.rows) return false;
+    if (!anyRowEspecificarMotivoRefFisioNeeded(sheetState.rows, sheetState.columns)) return false;
+    var cols = sheetState.columns;
+    var afterKey = _pickColumnByAliases(cols, MOTIVO_REF_ALIASES);
+    if (!afterKey) return false;
+    var espKey = _pickColumnByAliases(cols, ESPECIFICAR_MOTIVO_REF_FISIO_ALIASES);
+    if (espKey) {
+      var aIdx = (function () {
+        for (var i = 0; i < cols.length; i += 1) {
+          if (normColName(cols[i]) === normColName(afterKey)) return i;
+        }
+        return -1;
+      }());
+      var eIdx = (function () {
+        for (var j = 0; j < cols.length; j += 1) {
+          if (normColName(cols[j]) === normColName(espKey)) return j;
+        }
+        return -1;
+      }());
+      if (aIdx < 0 || eIdx < 0) return false;
+      if (eIdx === aIdx + 1) return false;
+      var colName = cols.splice(eIdx, 1)[0];
+      if (eIdx < aIdx) aIdx -= 1;
+      cols.splice(aIdx + 1, 0, colName);
+      if (sheetState.colWidths) sheetState.colWidths = {};
+      return true;
+    }
+    var tIdx = (function () {
+      for (var k = 0; k < cols.length; k += 1) {
+        if (normColName(cols[k]) === normColName(afterKey)) return k;
+      }
+      return -1;
+    }());
+    if (tIdx < 0) return false;
+    cols.splice(tIdx + 1, 0, ESPECIFICAR_MOTIVO_REF_FISIO_LABEL);
+    (sheetState.rows || []).forEach(function (row) {
+      if (!row) return;
+      if (row[ESPECIFICAR_MOTIVO_REF_FISIO_LABEL] == null) row[ESPECIFICAR_MOTIVO_REF_FISIO_LABEL] = '';
+    });
+    if (sheetState.colWidths) sheetState.colWidths = {};
+    return true;
   }
 
   var ESPECIFICAR_ENTREGA_BENEFICIARIO_LABEL = 'Especificar lo que se entrega al beneficiario';
@@ -2649,6 +2821,9 @@
       if (isEspecificarEntregaBeneficiarioColumn(c) && !shouldShowEspecificarEntregaBeneficiarioColumn(c, columns, rows)) {
         continue;
       }
+      if (isEspecificarMotivoRefFisioColumn(c) && !shouldShowEspecificarMotivoRefFisioColumn(c, columns, rows)) {
+        continue;
+      }
       if (isAlwaysVisibleLugarAtencionColumn(c)) {
         idx.push(ci);
         continue;
@@ -2753,6 +2928,24 @@
       });
     }
 
+    var fisioMotivoRefDetailRows = [];
+    var motivoRefColB = findCol(MOTIVO_REF_ALIASES);
+    var motEspColB = findCol(ESPECIFICAR_MOTIVO_REF_FISIO_ALIASES);
+    var serviceColB = findCol(['Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda']);
+    if (refCol && motivoRefColB && serviceColB && motEspColB) {
+      (rows || []).forEach(function (row, idx) {
+        var rawSvc = String((row && row[serviceColB]) || '').trim();
+        if (!rawSvc || normalizeServiceName(rawSvc) !== 'fisioterapia') return;
+        var refVal3 = normColName(preNormalizeKoboOptionsCell((row && row[refCol]) || ''));
+        if (refVal3 !== 'si' && refVal3 !== 'sí') return;
+        var mRaw = String((row && row[motivoRefColB]) || '').trim();
+        if (!mRaw) return;
+        var isOtro = rowDiagnosisTokensIncludeOtro(mRaw) || normColName(mRaw) === 'otro';
+        if (!isOtro) return;
+        if (looksMissingValue(row && row[motEspColB])) fisioMotivoRefDetailRows.push(idx + 2);
+      });
+    }
+
     var invalidOptionRows = [];
     var refColForOptions = findCol(['Se hizo referencia', '¿Se hizo referencia?', 'Referencia']);
     var preferredColumnsForLabel = function (label, colsForLabel) {
@@ -2810,9 +3003,13 @@
     var serviceConditional = {
       'medicina general': ['Diagnóstico Medicina General'],
       'dental': ['Diagnóstico Odontología'],
-      'fisioterapia': ['Fisioterapia'],
-      'oftalmologia': ['Sintomas que presenta a la fecha de consulta', '¿Ha recibido algún diagnóstico previo?', 'Diagnóstico Actual'],
-      'laboratorios': []
+      'fisioterapia': ['Fisioterapia', 'Plan de Tratamiento'],
+      'oftalmologia': [
+        'Síntomas que presenta a la fecha de consulta',
+        '¿Ha recibido algún diagnóstico previo?',
+        'Diagnóstico Actual'
+      ],
+      'laboratorios': ['Laboratorio Clínico', 'Diagnóstico / Resu']
     };
     var serviceMissing = [];
     var serviceCol = findCol(['Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda']);
@@ -2835,6 +3032,7 @@
               ]);
             });
           }
+          if (matched[lbl] && matched[lbl].length) return false;
           var nk = normColName(lbl);
           return !(columns || []).some(function (c) { return normColName(c) === nk; });
         });
@@ -2854,6 +3052,7 @@
       && coordinatesRows.length === 0
       && invalidOptionRows.length === 0
       && referenceDestinationRows.length === 0
+      && fisioMotivoRefDetailRows.length === 0
       && serviceMissing.length === 0
     );
 
@@ -2868,7 +3067,8 @@
         date_rows: dateRows.slice(0, 30),
         coordinates_rows: coordinatesRows.slice(0, 30),
         option_rows: invalidOptionRows.slice(0, 20),
-        reference_destination_rows: referenceDestinationRows.slice(0, 30)
+        reference_destination_rows: referenceDestinationRows.slice(0, 30),
+        fisio_motivo_ref_detail_rows: fisioMotivoRefDetailRows.slice(0, 30)
       },
       service_conditional_missing: serviceMissing,
       human_message: ready ? 'Listo para enviar a Kobo.' : 'Faltan datos por corregir antes de enviar a Kobo.'
@@ -2887,6 +3087,14 @@
         if (k && !aliasToLabel[k]) aliasToLabel[k] = label;
       });
     });
+    var headerNormToLabel = {
+      'toma de consentimiento antes de iniciar la consulta': 'Toma de consentimiento antes de iniciar la consulta',
+      'pertenece a alguna minora etnica': 'Minoría',
+      'originario': 'Estado',
+      'motivo referido': 'Motivo Ref',
+      'laboratorio clinico': 'Laboratorio Clínico',
+      'coordenadas': 'Coordenadas'
+    };
     var requiredLabels = (schema || []).filter(function (x) { return !!x.required; }).map(function (x) { return x.label; });
     var matched = {};
     var unknown = [];
@@ -2897,7 +3105,8 @@
       var col = String(c || '').trim();
       if (!col) return;
       var key = normColName(col);
-      var label = aliasToLabel[key];
+      var direct = headerNormToLabel[key];
+      var label = direct || aliasToLabel[key];
       if (label) {
         if (!matched[label]) matched[label] = [];
         matched[label].push(col);
@@ -2908,7 +3117,7 @@
         aliasKeys.forEach(function (k) {
           var score = 0;
           if (k === key) score = 1;
-          else if (k.indexOf(key) >= 0 || key.indexOf(k) >= 0) score = 0.82;
+          else if (k.indexOf(key) >= 0 || key.indexOf(k) >= 0) score = 0.86;
           else {
             var parts = key.split(' ');
             var hits = 0;
@@ -2917,8 +3126,14 @@
           }
           if (score > bestScore) { bestScore = score; best = k; }
         });
-        if (best && bestScore >= 0.72) {
-          suggestions[col] = aliasToLabel[best];
+        if (best && bestScore >= 0.86) {
+          var suggL = aliasToLabel[best];
+          var nsL = normColName(suggL);
+          if (key.indexOf('inici') >= 0 && nsL.indexOf('verbal') >= 0) { /* no cruzar CONS1 vs CONS */ }
+          else if (key.indexOf('verbal') >= 0 && nsL.indexOf('inici') >= 0) { }
+          else {
+            suggestions[col] = suggL;
+          }
         }
       }
     });
@@ -2998,6 +3213,11 @@
         + invalid.reference_destination_rows.slice(0, 10).map(String).join(', ')
         + '</div>';
     }
+    if (invalid.fisio_motivo_ref_detail_rows && invalid.fisio_motivo_ref_detail_rows.length) {
+      h += '<div class="sheet-check-list"><strong>Falta "Especificar (motivo referido)" en fisioterapia (referencia = Sí y «Motivo Ref» = Otro):</strong> filas '
+        + invalid.fisio_motivo_ref_detail_rows.slice(0, 10).map(String).join(', ')
+        + '</div>';
+    }
     if (sc.service_conditional_missing && sc.service_conditional_missing.length) {
       h += '<div class="sheet-check-list"><strong>Campos por servicio:</strong> '
         + sc.service_conditional_missing.map(function (it) {
@@ -3028,7 +3248,15 @@
   }
 
   function schemaInfoForColumnName(colName) {
-    if (!sheetState || !sheetState.koboSchema) return null;
+    if (!sheetState) return null;
+    if (colIsAny(colName, ME_ML_ALIASES)) {
+      return {
+        required: false,
+        hint: 'Solo si el sexo registrado es femenino. Use: Embarazada, Lactancia o No Aplica. En sexo masculino la celda debe quedar vacía.',
+        options: ['Embarazada', 'Lactancia', 'No Aplica']
+      };
+    }
+    if (!sheetState.koboSchema) return null;
     var key = normColName(colName);
     if (!key) return null;
 
@@ -3119,10 +3347,20 @@
     return lines.join('\n');
   }
 
+  function clientTreatmentTextLooksIncomplete(s) {
+    s = String(s == null ? '' : s).trim();
+    if (!s) return true;
+    if (/(\d{1,4}[\s.,]*\s*mg|\bml\b|tabs?\.?|compr(imi|imido)?|c[áa]ps?|dosis|x\s*20d)/i.test(s)) {
+      return false;
+    }
+    return true;
+  }
+
   function renderSheetTable() {
     if (!sheetState || !sheetTableWrap) return;
     ensureColumnsForServicesInSheet();
     ensureEspecificarEntregaBeneficiarioColumn();
+    ensureEspecificarMotivoRefFisioColumn();
     ensureProcedimientoDentalAfterTriggerColumn();
     if (sheetState.koboSchema) {
       sheetState.columnsCheck = computeColumnsCheckFromSchema(
@@ -3153,24 +3391,38 @@
     for (var vi = 0; vi < visibleIdx.length; vi += 1) {
       var cj = visibleIdx[vi];
       var w = sheetState.colWidths && sheetState.colWidths[String(cj)] ? sheetState.colWidths[String(cj)] : 135;
-      var schemaInfo = schemaInfoForColumnName(cols[cj]);
+      var c0 = cols[cj];
+      var mapDisp = sheetState.columnDisplay && sheetState.columnDisplay[c0];
+      var schemaInfo = schemaInfoForColumnName(c0);
       var tipText = buildColumnTooltip(schemaInfo);
       var reqMark = schemaInfo && schemaInfo.required ? '<span class="sheet-col-required">*</span>' : '';
       var tipIcon = tipText ? ('<span class="sheet-col-tip" data-tip="' + escAttr(tipText) + '" aria-label="Ayuda de columna">i</span>') : '';
       h += '<th class="sheet-col-h" scope="col" data-ci="' + cj + '" style="width:' + w + 'px;min-width:' + w + 'px;max-width:' + w + 'px;">'
         + reqMark
-        + tipIcon
-        + '<input class="sheet-header-input" type="text" data-ci="' + cj + '" value="' + escAttr(cols[cj]) + '" spellcheck="false" />'
-        + '<span class="sheet-col-resizer" data-ci="' + cj + '" title="Arrastre para cambiar el ancho"></span>'
+        + tipIcon;
+      if (mapDisp) {
+        h += '<div class="sheet-header-mapped" data-ci="' + cj + '">'
+          + '<span class="sheet-header-mapped-primary" title="Nombre alineado con Kobo (solo visual)">' + esc(mapDisp) + '</span>'
+          + '<span class="sheet-header-mapped-file" title="Nombre de columna en el archivo; no se cambia al guardar.">'
+          + esc(c0) + '</span>'
+          + '</div>';
+      } else {
+        h += '<input class="sheet-header-input" type="text" data-ci="' + cj + '" value="' + escAttr(c0) + '" spellcheck="false" />';
+      }
+      h += '<span class="sheet-col-resizer" data-ci="' + cj + '" title="Arrastre para cambiar el ancho"></span>'
         + '</th>';
     }
     h += '<th class="sheet-dummy" aria-hidden="true"></th></tr></thead><tbody>';
     if (rows.length === 0) {
       h += '<tr><td style="z-index:0" colspan="' + (cols.length + 2) + '"><p class="sheet-empty-hint" style="margin:0.5rem 0.5rem 0.5rem 1.2rem">No hay filas. Pulse <strong>+ Fila</strong> para añadir registros.</p></td></tr>';
     }
+    var tColWarn = _pickColumnByAliases(cols, TREATMENT_SUGG_ALIASES);
     for (var ri = 0; ri < rows.length; ri += 1) {
       applyRowDefaultsByKoboRules(rows[ri] || {}, cols);
-      h += '<tr data-r="' + ri + '"><th class="sheet-row-h" scope="row" role="rowheader" data-r="' + ri + '">#' + (ri + 1) + '<br/><button type="button" class="sheet-btn-del-row" data-r="' + ri + '" title="Quitar fila" aria-label="Quitar fila ' + (ri + 1) + '">×</button></th>';
+      var tVal = tColWarn && rows[ri] && rows[ri][tColWarn] != null ? String(rows[ri][tColWarn]) : '';
+      var tInc = tColWarn ? clientTreatmentTextLooksIncomplete(tVal) : false;
+      var trCls = tInc ? ' class="sheet-row-tto-warn"' : '';
+      h += '<tr data-r="' + ri + '"' + trCls + '><th class="sheet-row-h" scope="row" role="rowheader" data-r="' + ri + '">#' + (ri + 1) + '<br/><button type="button" class="sheet-btn-del-row" data-r="' + ri + '" title="Quitar fila" aria-label="Quitar fila ' + (ri + 1) + '">×</button></th>';
       for (vi = 0; vi < visibleIdx.length; vi += 1) {
         cj = visibleIdx[vi];
         var cname = cols[cj];
@@ -3415,7 +3667,8 @@
           colWidths: {},
           editorName: editorName,
           koboSchema: d.columns_check && d.columns_check.kobo_schema ? d.columns_check.kobo_schema : null,
-          columnsCheck: d.columns_check || null
+          columnsCheck: d.columns_check || null,
+          columnDisplay: d.column_display && typeof d.column_display === 'object' ? d.column_display : {}
         };
         if (d.file) sheetState.file = d.file;
         startSheetLockHeartbeat();
@@ -3472,6 +3725,9 @@
       if (r1.status === 423) throw new Error((d1 && d1.error) || 'Archivo bloqueado por otro usuario');
       if (!d1.ok) throw new Error((d1 && d1.error) || 'No se pudo guardar la tabla');
       if (d1.file) sheetState.file = d1.file;
+      if (d1.column_display && typeof d1.column_display === 'object') {
+        sheetState.columnDisplay = d1.column_display;
+      }
       if (sheetUploadedBy) sheetUploadedBy.value = editorName;
       setSheetMsg('Guardado en el servidor.', 'ok');
       if (typeof uploadMsg !== 'undefined' && uploadMsg) setMsg(uploadMsg, 'Archivo y hoja actualizados.', 'ok');
@@ -3497,6 +3753,121 @@
       }
     }
     return '';
+  }
+
+  function pickTreatmentColumnForSheet(cols) {
+    return _pickColumnByAliases(cols, TREATMENT_SUGG_ALIASES);
+  }
+
+  function buildTreatmentSuggestPayload(ri) {
+    if (!sheetState || !sheetState.rows || !sheetState.rows[ri]) return null;
+    var row = sheetState.rows[ri];
+    var colList = sheetState.columns;
+    return {
+      edad: rowValueByAliases(row, colList, ['Edad', 'AGE']),
+      servicio: rowValueByAliases(row, colList, [
+        'Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda'
+      ]),
+      sexo: rowValueByAliases(row, colList, ['Sexo', 'SEX']),
+      dx_espir: (
+        rowValueByAliases(row, colList, MG_DIAGNOSIS_ESPECIFICAR_ALIASES) ||
+        rowValueByAliases(row, colList, MG_DIAGNOSIS_COLUMN_ALIASES) ||
+        ''
+      ),
+      tratamiento_actual: rowValueByAliases(row, colList, TREATMENT_SUGG_ALIASES) || ''
+    };
+  }
+
+  function applyTreatmentSuggestion(ri, texto) {
+    if (!sheetState || !sheetState.rows[ri]) return;
+    var col = pickTreatmentColumnForSheet(sheetState.columns);
+    if (!col) {
+      if (sheetStatus) setMsg(sheetStatus, 'No se encontró columna Tratamiento. Use un encabezado alineado con Kobo (Tratamiento, medicamentos, etc.)', 'error');
+      return;
+    }
+    sheetState.rows[ri][col] = texto;
+    sheetDirty = true;
+    if (sheetTreatmentPanel) sheetTreatmentPanel.style.display = 'none';
+    if (sheetTreatmentList) sheetTreatmentList.innerHTML = '';
+    renderSheetTable();
+  }
+
+  function loadTreatmentSuggestionsForRow(ri) {
+    if (!sheetState) return;
+    if (isNaN(ri) || ri < 0 || ri >= sheetState.rows.length) return;
+    if (sheetTreatmentRowInfo) {
+      sheetTreatmentRowInfo.textContent = 'Fila #' + (ri + 1) + (sheetTreatmentPanel ? '' : '');
+    }
+    if (sheetTreatmentPanel) sheetTreatmentPanel.style.display = 'block';
+    if (sheetTreatmentList) sheetTreatmentList.innerHTML = '<p class="sheet-skel">Cargando sugerencias…</p>';
+    var pl = buildTreatmentSuggestPayload(ri);
+    if (!pl) return;
+    fetch(u('api/treatment-suggestions'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        edad: pl.edad,
+        servicio: pl.servicio,
+        sexo: pl.sexo,
+        dx_espir: pl.dx_espir,
+        tratamiento_actual: pl.tratamiento_actual
+      })
+    })
+      .then(function (r) {
+        if (!r.ok) {
+          return r.text().then(function (tx) { throw new Error('HTTP ' + r.status + (tx ? (': ' + tx.substring(0, 120)) : '')); });
+        }
+        return r.json();
+      })
+      .then(function (data) {
+        if (sheetTreatmentRowInfo) {
+          var inct = data.incompleto ? ' · tratamiento vacío o sin dosis' : '';
+          sheetTreatmentRowInfo.textContent = 'Fila #' + (ri + 1) + inct;
+        }
+        if (sheetTreatmentCohortInfo) {
+          var cg = (data.cohorte_generado != null && data.cohorte_generado) ? data.cohorte_generado : '—';
+          var nfi = (data.cohorte_fila_index != null) ? data.cohorte_fila_index : 0;
+          var nfa = (data.cohorte_archivo_index != null) ? data.cohorte_archivo_index : 0;
+          sheetTreatmentCohortInfo.textContent = 'Cohorte indexado: ' + nfa + ' archivos / ' + nfi + ' filas con dosis · generado: ' + cg;
+        }
+        if (!sheetTreatmentList) return;
+        if (!data || data.ok === false) {
+          sheetTreatmentList.innerHTML = '<p class="sheet-treatment-err">' + esc(String((data && data.error) || 'Error al obtener sugerencias')) + '</p>';
+          return;
+        }
+        var sugg = (data && data.suggestions) ? data.suggestions : [];
+        if (!sugg.length) {
+          sheetTreatmentList.innerHTML = '<p class="sheet-treatment-empty">No hay sugerencias. Reconstruya el índice: POST api/treatment-cohort/rebuild o deposite cohort_treatment_index.json. Revise pauta en dosis_referencia.json.</p>';
+          return;
+        }
+        var h = '<ul class="sheet-treatment-ul">';
+        for (var i = 0; i < sugg.length; i += 1) {
+          var s = sugg[i];
+          var src = s.fuente === 'pauta' ? 'Pauta editorial' : 'Cohorte (frec. en validados, no clínica)';
+          var n = s.n && s.n > 0 ? 'n=' + s.n : '';
+          h += '<li class="sheet-treatment-li">'
+            + '<div class="sheet-treatment-txt">' + esc(String(s.texto || '')) + '</div>'
+            + '<div class="sheet-treatment-meta">' + esc(src) + (n ? ' ' + n : '') + '</div>';
+          h += '<button type="button" class="btn btn-sm sheet-treatment-apply" data-ri="' + ri
+            + '" data-txt="' + escAttr(String(s.texto || '')) + '">Aplicar a Tratamiento</button></li>';
+        }
+        h += '</ul>';
+        sheetTreatmentList.innerHTML = h;
+        var btns2 = sheetTreatmentList.querySelectorAll('.sheet-treatment-apply');
+        for (var jj = 0; jj < btns2.length; jj += 1) {
+          btns2[jj].addEventListener('click', function (ev) {
+            var b = ev.currentTarget;
+            var r = parseInt(b.getAttribute('data-ri'), 10);
+            var tx = b.getAttribute('data-txt') || '';
+            applyTreatmentSuggestion(r, tx);
+          });
+        }
+      })
+      .catch(function (e) {
+        if (sheetTreatmentList) {
+          sheetTreatmentList.innerHTML = '<p class="sheet-treatment-err">' + esc((e && e.message) || String(e)) + '</p>';
+        }
+      });
   }
 
   function closeKoboSubmitModal() {
@@ -3696,6 +4067,15 @@
             var trEnt = el.closest('tr[data-r]');
             if (trEnt) applyConditionalStateToRenderedRow(trEnt);
           }
+        } else if (colIsAny(cname, MOTIVO_REF_ALIASES) || colIsAny(cname, [
+          'Se hizo referencia', '¿Se hizo referencia?', 'Referencia', 'REF'
+        ])) {
+          if (ensureEspecificarMotivoRefFisioColumn()) {
+            rerenderSheetPreservingViewportAndFocus();
+          } else {
+            var trM = el.closest('tr[data-r]');
+            if (trM) applyConditionalStateToRenderedRow(trM);
+          }
         } else if (isRuleTriggerColumn(cname)) {
           var tr = el.closest('tr[data-r]');
           if (tr) applyConditionalStateToRenderedRow(tr);
@@ -3724,6 +4104,7 @@
         var r = parseInt(el.getAttribute('data-r'), 10);
         var c = parseInt(el.getAttribute('data-ci'), 10);
         if (isNaN(r) || isNaN(c)) return;
+        if (sheetState) sheetState._lastRowFocus = r;
         if (!e.shiftKey) setSelection(r, c, r, c);
       });
 
@@ -3895,6 +4276,23 @@
     sheetOpenGuide.addEventListener('click', function () {
       if (!sheetState) return;
       startSheetGuide();
+    });
+  }
+  if (sheetOpenTreatmentSuggest) {
+    sheetOpenTreatmentSuggest.addEventListener('click', function () {
+      if (!sheetState || !sheetState.rows || !sheetState.rows.length) {
+        if (sheetStatus) setMsg(sheetStatus, 'No hay hoja cargada.', 'error');
+        return;
+      }
+      var r = 0;
+      var active = document.activeElement;
+      if (active && active.classList && active.classList.contains('sheet-cell')) {
+        r = parseInt(active.getAttribute('data-r'), 10);
+      } else if (sheetState._lastRowFocus != null && !isNaN(sheetState._lastRowFocus)) {
+        r = sheetState._lastRowFocus;
+      }
+      if (isNaN(r) || r < 0) r = 0;
+      loadTreatmentSuggestionsForRow(r);
     });
   }
   if (sheetSubmitKobo) {
