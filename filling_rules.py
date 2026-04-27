@@ -233,6 +233,8 @@ ESTADO_PACIENTE_ALIAS: dict[str, str] = {
     "estado de mexico":        "Estado de México",
     "estado de méxico":        "Estado de México",
     "edomex":                  "Estado de México",
+    "mexico":                  "Estado de México",
+    "méxico":                  "Estado de México",
     "guanajuato":              "Guanajuato",
     "guerrero":                "Guerrero",
     "hidalgo":                 "Hidalgo",
@@ -567,6 +569,22 @@ DIS_VALUE_ALIASES: dict[str, str] = {
     "other":        "otra",
 }
 
+# Orden fijo: subcolumnas 0/1 (export Kobo) → clave en registro → etiqueta en DIS
+_DIS_FLAG_ORDER: list[tuple[str, str]] = [
+    ("DIS_motriz", "Motriz"),
+    ("DIS_visual", "Visual"),
+    ("DIS_auditiva", "Auditiva"),
+    ("DIS_intelectual", "Intelectual"),
+    ("DIS_otra", "Otra"),
+]
+DIS_INTERNAL_TO_KOBO_LABEL: dict[str, str] = {
+    "motriz": "Motriz",
+    "visual": "Visual",
+    "auditiva": "Auditiva",
+    "intelectual": "Intelectual",
+    "otra": "Otra",
+}
+
 
 def _norm_str(s: str) -> str:
     """Minúsculas y sin tildes para comparaciones robustas."""
@@ -577,13 +595,172 @@ def _norm_str(s: str) -> str:
     )
 
 
+def _is_dis_absent_or_placeholder(text: str) -> bool:
+    """N/D, sin dato, etc. → no marcar discapacidades por texto; usar flags si existen."""
+    t = _norm_str(text)
+    if not t:
+        return True
+    return t in {
+        "n/d",
+        "nd",
+        "n d",
+        "na",
+        "n a",
+        "no aplica",
+        "noaplica",
+        "ninguno",
+        "ninguna",
+        "ningun",
+        "ningunna",
+        "sin dato",
+        "s d",
+        "s/d",
+        "-",
+        "no indicado",
+        "no disponible",
+    }
+
+
+def _cell_affirmative_dis(v: object) -> bool:
+    s = str(v or "").strip().lower()
+    return s in ("1", "sí", "si", "yes", "y", "true", "x", "s")
+
+
+def _has_dis_flag_column_data(record: dict) -> bool:
+    for k, _ in _DIS_FLAG_ORDER:
+        if k in record and str(record.get(k, "")).strip() != "":
+            return True
+    return False
+
+
+def _dis_from_binary_flags(record: dict) -> tuple[str, str]:
+    """
+    A partir de DIS_motriz … DIS_otra (0/1 o Sí/No) arma DIS y texto para «Otra».
+    """
+    labels: list[str] = []
+    otra_on = False
+    for k, label in _DIS_FLAG_ORDER:
+        if k not in record:
+            continue
+        v = record.get(k)
+        if not str(v or "").strip():
+            continue
+        if not _cell_affirmative_dis(v):
+            continue
+        labels.append(label)
+        if k == "DIS_otra":
+            otra_on = True
+    dis_val = MULTISELECT_SEP.join(labels) if labels else ""
+    dis_esp = ""
+    if otra_on:
+        dis_esp = str(record.get("Especificar_discapacidad", "")).strip()
+        if not dis_esp:
+            dis_esp = str(record.get("Discapacidad", "")).strip()
+    return dis_val, dis_esp
+
+
+def _dis_internals_to_kobo_labels(internals_joined: str) -> str:
+    if not str(internals_joined or "").strip():
+        return ""
+    parts = [p.strip() for p in str(internals_joined).split(MULTISELECT_SEP) if p.strip()]
+    out_labs: list[str] = []
+    for p in parts:
+        low = p.lower()
+        out_labs.append(DIS_INTERNAL_TO_KOBO_LABEL.get(low, p))
+    return MULTISELECT_SEP.join(out_labs)
+
+
+# Diagnóstico fisioterapia: API Kobo 0/1 (columnas Diagnóstico/… o texto libre)
+FISIO_BIN_KEYS: tuple[str, ...] = (
+    "FISIO_Revision",
+    "FISIO_Artrosis",
+    "FISIO_Artritis",
+    "FISIO_Lesiones_musculoesqueleticas",
+    "FISIO_Dolor_cronico",
+    "FISIO_Enf_neurologicas",
+    "FISIO_Problemas_respiratorios",
+    "FISIO_Dolor",
+    "FISIO_Contractura",
+    "FISIO_Otro",
+)
+
+
+def _fisio_cell_to_01(v: object) -> str:
+    t = str(v or "").strip().lower()
+    if t in ("1", "sí", "si", "yes", "y", "true", "x", "s"):
+        return "1"
+    return "0"
+
+
+def _fisio_flags_from_text(dx_text: str) -> set[str]:
+    """
+    A partir de texto (diagnóstico Fisioterapia) detecta qué FISIO_* marcan 1.
+    Dolor crónico excluye al mismo tiempo FISIO_Dolor (dolor aislado).
+    """
+    t = _norm_str(dx_text)
+    if not t or t in ("n/d", "nd", "na", "no aplica", "-", "s/d", "s d"):
+        return set()
+    f: set[str] = set()
+    if "revis" in t and "revisor" not in t:
+        f.add("FISIO_Revision")
+    if "artrosis" in t:
+        f.add("FISIO_Artrosis")
+    if "artrit" in t:
+        f.add("FISIO_Artritis")
+    if ("musc" in t and "esq" in t) or "lme" in t or "musculoes" in t:
+        f.add("FISIO_Lesiones_musculoesqueleticas")
+    dolor_cronico = "dolor" in t and ("cronic" in t or "crono" in t)
+    if dolor_cronico:
+        f.add("FISIO_Dolor_cronico")
+    elif "dolor" in t:
+        f.add("FISIO_Dolor")
+    if "neurol" in t:
+        f.add("FISIO_Enf_neurologicas")
+    if "respirat" in t or ("respir" in t and "dific" in t):
+        f.add("FISIO_Problemas_respiratorios")
+    if "contract" in t:
+        f.add("FISIO_Contractura")
+    if "otro" in t or t.strip().startswith("otro"):
+        f.add("FISIO_Otro")
+    return f
+
+
+def _map_modalidad_excel_to_kobo(record: dict[str, str]) -> str:
+    """
+    Valor real de Enketo para Modalidad_de_la_atenci_n a partir de Excel/record.
+    Valores: "1"=Móvil, "albergues", "centros_comunitarios", "2"=Clínica, "escuelas".
+    """
+    raw = _pick_first(
+        record,
+        ["Modalidad_de_la_atenci_n", "Modalidad"],
+    )
+    s = str(raw or "").strip()
+    if not s:
+        return "1"
+    s_low = s.lower().strip()
+    if s_low in ("1", "albergues", "centros_comunitarios", "2", "escuelas"):
+        return s_low
+    n = _norm_str(s)
+    if "alberg" in n:
+        return "albergues"
+    if "comunit" in n or n.startswith("centro"):
+        return "centros_comunitarios"
+    if "clinica" in n or "adventista" in n:
+        return "2"
+    if "escuela" in n:
+        return "escuelas"
+    if "movil" in n or n == "fija" or s_low in ("movil", "móvil", "fija", "fijo"):
+        return "1"
+    return "1"
+
+
 def _map_lugar_atencion(poc_value: str, lugar: str) -> tuple[str, str, bool]:
     """
     Dado el value del campo POC (Estado) y el texto del Lugar de Atención del Excel,
     retorna (field_name, value_to_set, is_otro) donde:
       - field_name  : nombre del campo de radio condicional para ese estado
       - value_to_set: etiqueta del lugar que coincide, o "Otro" si no hay coincidencia
-      - is_otro     : True → no se encontró coincidencia; llenar SCH y OTH con el texto libre
+      - is_otro     : True → no se encontró coincidencia; llenar OTH/PLACE; SCH solo si modalidad=Escuelas
     Si poc_value no está en LUGAR_POR_ESTADO (ej. POC_OTRO) retorna ("", "", False).
     """
     config = LUGAR_POR_ESTADO.get(poc_value)
@@ -616,8 +793,9 @@ def _map_discapacidades(text: str) -> tuple[str, str]:
     text = str(text or "").strip()
     if not text:
         return "", ""
+    if _is_dis_absent_or_placeholder(text):
+        return "", ""
 
-    norm_text = _norm_str(text)
     matched: list[str] = []
     unrecognized: list[str] = []
 
@@ -627,6 +805,8 @@ def _map_discapacidades(text: str) -> tuple[str, str]:
         parts = [text]
 
     for part in parts:
+        if _is_dis_absent_or_placeholder(part):
+            continue
         norm_part = _norm_str(part)
         found_val = None
         for keyword, dis_val in DIS_VALUE_ALIASES.items():
@@ -637,6 +817,9 @@ def _map_discapacidades(text: str) -> tuple[str, str]:
             matched.append(found_val)
         elif not found_val:
             unrecognized.append(part)
+
+    if not matched and not unrecognized:
+        return "", ""
 
     # Si hay partes no reconocidas → marcar "otra" y llenar especificar
     especificar = ""
@@ -725,14 +908,25 @@ def apply_rules(
     # Se envía "Sí" (etiqueta visible) para que el JS haga coincidencia por texto del span.
     # Si el formulario usa value="1", el fallback de _fill_field_in_frame lo cubre también.
     out["CONS"] = "Sí"
-    # Modalidad: SIEMPRE Móvil (value="1" en este formulario)
-    out["Modalidad_de_la_atenci_n"] = "1"
-    # Nacionalidad: México por defecto
-    out["NAT"] = "México"
-    out["NATOT"] = "México"
-    # Minoría étnica: No por defecto (value="0")
-    minoria = _parse_si_no(record.get("_Pertenece_a_alguna_minor_a_t"))
+    out["Modalidad_de_la_atenci_n"] = _map_modalidad_excel_to_kobo(record)
+    # Nacionalidad: México por defecto. NATOT (texto bajo el mismo bloque) solo si aplica; no
+    # duplicar "México" en NAT y en NATOT salvo que venga en el registro o sea necesario.
+    _nat = str(record.get("NAT", "")).strip()
+    out["NAT"] = _nat or "México"
+    _natot = str(record.get("NATOT", "")).strip()
+    if _natot:
+        out["NATOT"] = _natot
+    # Minoría étnica: No por defecto (value="0"). Si viene la especificación
+    # con texto, Kobo requiere que el radio quede marcado como "Sí".
+    minoria_raw = str(record.get("_Pertenece_a_alguna_minor_a_t", "")).strip()
+    minoria_especifica = str(record.get("Especificar_Minor_a_tnica", "")).strip()
+    minoria = _parse_si_no(minoria_raw)
+    if not minoria and minoria_raw and minoria_raw.lower() not in ("no", "n", "0", ""):
+        minoria = "1"
+    if minoria_especifica:
+        minoria = "1"
     out["_Pertenece_a_alguna_minor_a_t"] = "1" if minoria == "1" else "0"
+    out["Especificar_Minor_a_tnica"] = minoria_especifica if minoria == "1" else ""
 
     # ── SERVICIO Y ASESORÍA PREVIA ────────────────────────────────────────────
     # Lógica: el "Servicio que se brinda" depende de las especialidades marcadas
@@ -786,9 +980,21 @@ def apply_rules(
 
         # ASESPREV: SOLO desde columna explícita del Excel.
         # NO se copia del servicio actual (ASESPREV = módulos OTROS, no el mismo).
-        asesprev_excel = _norm_servicio(str(record.get("ASESPREV", "")).strip())
-        if asesprev_excel:
-            out["ASESPREV"] = asesprev_excel
+        # Celdas vacías deben dejar el campo vacío (como en Kobo), no forzar "Medicina General" vía _norm_servicio("").
+        raw_asesp = str(record.get("ASESPREV", "")).strip()
+        if raw_asesp:
+            if "|||" in raw_asesp:
+                partes: list[str] = []
+                for p in raw_asesp.split("|||"):
+                    v = _norm_asesprev_celda(p)
+                    if v:
+                        partes.append(v)
+                if partes:
+                    out["ASESPREV"] = "|||".join(partes)
+            else:
+                v_asp = _norm_asesprev_celda(raw_asesp)
+                if v_asp:
+                    out["ASESPREV"] = v_asp
 
     # ── OFTALMOLOGÍA: campos condicionales ───────────────────────────────────
     # Activar cuando el SERVICIO ACTUAL es Oftalmología (no cuando es asesoría previa).
@@ -868,44 +1074,39 @@ def apply_rules(
             if proc_esp:
                 out["Especificar_003"] = proc_esp
 
-    # ── FISIOTERAPIA: Diagnóstico ─────────────────────────────────────────────
+    # ── FISIOTERAPIA: Diagnóstico API 0/1 (Diagnóstico/Revisión … /Otro) ───────
     _servicio_fisio = _norm_str(out.get("Servicio_que_se_brinda", ""))
     if "fisioterapia" in _servicio_fisio:
-        dx_text = _pick_first(record, [
-            "Diagnostico_Fisioterapia",
-            "Diagnóstico_Fisioterapia",
-            "Diagnostico_fisioterapia",
-            "Diagnóstico fisioterapia",
-            "Diagnosticos",
-            "Diagnóstico",
-            "Diagnostico_Motivo",
-            "Diagnostico",
-        ])
-        if not dx_text:
-            dx_text = "Lesiones Musculares"
-        fisio_opts = {
-            "artrosis": "Artrosis",
-            "artritis": "Artritis",
-            "lesiones musculoesqueleticas": "Lesiones musculoesqueléticas",
-            "lesiones musculoesqueléticas": "Lesiones musculoesqueléticas",
-            "dolor cronico": "Dolor crónico",
-            "dolor crónico": "Dolor crónico",
-            "enfermedades neurologicas": "Enfermedades neurológicas",
-            "enfermedades neurológicas": "Enfermedades neurológicas",
-            "problemas respiratorios": "Problemas respiratorios",
-        }
-        norm_dx = _norm_str(dx_text)
-        matched = None
-        for k, val in fisio_opts.items():
-            if _norm_str(k) in norm_dx or norm_dx in _norm_str(k):
-                matched = val
-                break
-        if matched:
-            out["Diagn_stico"] = matched
-            out["Especificar"] = "" if matched != "Otro" else dx_text
-        else:
-            out["Diagn_stico"] = "Otro"
-            out["Especificar"] = dx_text
+        dx_text = str(
+            _pick_first(
+                record,
+                [
+                    "Fisio_Diagnostico",
+                    "Fisioterapia",
+                    "Diagnostico_Fisioterapia",
+                    "Diagnóstico_Fisioterapia",
+                    "Diagnostico_fisioterapia",
+                    "Diagnóstico fisioterapia",
+                    "Diagnóstico en Fisioterapia",
+                    "Diagnosticos",
+                    "Diagnóstico",
+                    "Diagnostico_Motivo",
+                    "Diagnostico",
+                ],
+            )
+            or ""
+        ).strip()
+        flags = _fisio_flags_from_text(dx_text) if dx_text else set()
+        for fk in FISIO_BIN_KEYS:
+            vrec = record.get(fk, "")
+            if vrec is not None and str(vrec).strip() != "":
+                out[fk] = _fisio_cell_to_01(vrec)
+            else:
+                out[fk] = "1" if fk in flags else "0"
+        if out.get("FISIO_Otro") == "1":
+            esp = str(record.get("Especificar", "")).strip() or dx_text
+            if esp:
+                out["Especificar"] = esp
 
         plan_tx = _pick_first(record, [
             "Plan_de_Tratamiento",
@@ -930,7 +1131,7 @@ def apply_rules(
 
     # ── FECHA ────────────────────────────────────────────────────────────────
     fecha_atencion = _norm_fecha(record.get("Fecha_de_atenci_n", ""))
-    out["Fecha_de_atenci_n"] = fecha_atencion or date.today().isoformat()
+    out["Fecha_de_atenci_n"] = fecha_atencion
 
     # ── INFORMACIÓN PERSONAL ─────────────────────────────────────────────────
     name_raw = str(record.get("NAME", "")).strip()
@@ -963,14 +1164,21 @@ def apply_rules(
     out["Especificar_lo_que_se_entrega_"] = str(record.get("Resultados_Lab_Insumos", "")).strip()
 
     # ── DISCAPACIDADES (DIS) ──────────────────────────────────────────────────
-    # Solo marcar si el Excel tiene algo escrito en la columna Discapacidad.
-    discapacidad_raw = str(record.get("Discapacidad", "")).strip()
-    if discapacidad_raw:
-        dis_val, dis_esp = _map_discapacidades(discapacidad_raw)
+    # Prioridad: subcolumnas 0/1 (export Kobo: …/Motriz, etc.) → DIS_*; si no, texto Discapacidad.
+    if _has_dis_flag_column_data(record):
+        dis_val, dis_esp = _dis_from_binary_flags(record)
         if dis_val:
             out["DIS"] = dis_val
         if dis_esp:
             out["Especificar_discapacidad"] = dis_esp
+    else:
+        discapacidad_raw = str(record.get("Discapacidad", "")).strip()
+        if discapacidad_raw:
+            dis_val, dis_esp = _map_discapacidades(discapacidad_raw)
+            if dis_val:
+                out["DIS"] = _dis_internals_to_kobo_labels(dis_val)
+            if dis_esp:
+                out["Especificar_discapacidad"] = dis_esp
 
     # ── DIAGNÓSTICOS (DX) ────────────────────────────────────────────────────
     # Mapear el diagnóstico del Excel a las opciones del formulario.
@@ -982,6 +1190,14 @@ def apply_rules(
             out["DX"] = dx_val
         if dxesp_val:
             out["dxesp"] = dxesp_val
+    # Columna hoja hacia dxesp (nunca usar la clave genérica "Especificar" aquí: en Kobo
+    # resuelve a NATOT / nacionalidad).
+    if "fisioterapia" not in _norm_str(out.get("Servicio_que_se_brinda", "")):
+        explic_mg = str(record.get("dxesp", "") or "").strip()
+        if explic_mg and ("Otro" in str(out.get("DX", "")) or not out.get("DX")):
+            out["dxesp"] = explic_mg
+        if explic_mg and not out.get("DX"):
+            out["DX"] = "Otro"
 
     # ── TRATAMIENTO ──────────────────────────────────────────────────────────
     # Prioridad: columna "Tratamiento" del Excel → "Insumos Entregados" → "Control"
@@ -992,9 +1208,17 @@ def apply_rules(
     )
     out["TX"] = tx_text or "Control"
 
-    # Plan de tratamiento: si no vino en el archivo o quedó vacío, usar Tratamiento (columna y/o mismo criterio que TX)
+    # Plan de tratamiento:
+    # 1) Priorizar columna explícita del archivo (Plan_de_Tratamiento / Plan de Tratamiento)
+    # 2) Si no existe, usar fallback desde Tratamiento/TX.
     if not str(out.get("Plan_de_Tratamiento", "")).strip():
-        plan_src = str(record.get("Tratamiento", "")).strip() or tx_text.strip()
+        plan_src = (
+            str(record.get("Plan_de_Tratamiento", "")).strip()
+            or str(record.get("Plan de Tratamiento", "")).strip()
+            or str(record.get("PlanTratamiento", "")).strip()
+            or str(record.get("Tratamiento", "")).strip()
+            or tx_text.strip()
+        )
         if not plan_src:
             plan_src = str(out.get("TX", "")).strip()
         if plan_src:
@@ -1004,7 +1228,21 @@ def apply_rules(
         str(out.get("Especifique_qu_se_entrega", "")).strip()
         or str(record.get("Especifique_qu_se_entrega", "")).strip()
     )
-    out["Especifique_qu_se_entrega"] = entrega_tipo or "Medicamento/suplemento"
+    if not entrega_tipo:
+        _svc_norm = _norm_str(out.get("Servicio_que_se_brinda", ""))
+        if "oftalmolog" in _svc_norm:
+            entrega_tipo = "Anteojos"
+        elif "dental" in _svc_norm or "odontolog" in _svc_norm:
+            entrega_tipo = "Anteojos"
+        elif "fisioterapia" in _svc_norm:
+            entrega_tipo = "Plan de Tratamiento"
+        elif "laboratorio" in _svc_norm:
+            entrega_tipo = "Resultados de Laboratorio"
+        elif "medicina" in _svc_norm or "general" in _svc_norm:
+            entrega_tipo = "Medicamento/suplemento"
+        else:
+            entrega_tipo = "Otro"
+    out["Especifique_qu_se_entrega"] = entrega_tipo
 
     unidades = str(record.get("Unidades_entregadas", "1")).strip()
     out["Unidades_entregadas"] = unidades or "1"
@@ -1039,20 +1277,22 @@ def apply_rules(
     # Cada estado tiene su propio radio condicional en el formulario.
     lugar_field, lugar_value, lugar_es_otro = _map_lugar_atencion(poc_value, lugar)
 
+    mod_k = str(out.get("Modalidad_de_la_atenci_n", "1") or "1")
+    sch_excel = str(record.get("SCH", "")).strip()
     if poc_value == POC_OTRO:
-        # Estado desconocido: llenar directamente OTH y SCH con el lugar libre
+        # Estado desconocido: llenar OTH/PLACE; SCH solo con modalidad Escuelas
         texto_libre = estado_brigada or lugar or "No especificado"
         out["OTH"] = texto_libre
-        out["SCH"] = texto_libre
         out["PLACE"] = texto_libre
+        if mod_k == "escuelas":
+            out["SCH"] = sch_excel or texto_libre
     elif lugar_field:
         # Estado conocido: seleccionar el radio del lugar correspondiente
         out[lugar_field] = lugar_value
-        # Siempre llenar SCH/OTH/PLACE con el nombre real del lugar,
-        # tanto si coincidió con la lista como si cayó en "Otro"
-        out["SCH"] = lugar    # Especificar Nombre del Colegio o Comunidad
         out["OTH"] = lugar    # Especificar Lugar de Atención
         out["PLACE"] = lugar
+        if mod_k == "escuelas":
+            out["SCH"] = sch_excel or lugar
 
     # ── UBICACIÓN GEOGRÁFICA ─────────────────────────────────────────────────
     # Prioridad:
@@ -1136,9 +1376,10 @@ def apply_rules(
     out["estatus_migra"] = estatus or "Ciudadano Mexicano"
 
     # ── REFERENCIAS ──────────────────────────────────────────────────────────
-    ref_raw = str(record.get("Referencia", record.get("REF", ""))).strip().lower()
-    hizo_ref = ref_raw in ("si", "sí", "1", "yes", "s")
-    # El formulario usa "Sí"/"No" — la lógica si_no_values también prueba "Yes"
+    ref_parsed = _parse_si_no(
+        str(record.get("Referencia", record.get("REF", ""))).strip()
+    )
+    hizo_ref = ref_parsed == "1"
     out["REF"] = "Sí" if hizo_ref else "No"
     if hizo_ref:
         ref_donde = str(record.get("Referencia_donde", "Clínica")).strip().lower()
@@ -1240,10 +1481,13 @@ def _norm_estado_paciente(s: str) -> str:
     return s.title()
 
 
+_FECHA_INVALID = {"n/d", "nd", "na", "n/a", "no disponible", "no aplica", "sin fecha", ""}
+
+
 def _norm_fecha(s: str) -> str:
     """Convierte cualquier formato de fecha a YYYY-MM-DD para KoboToolbox."""
     s = str(s or "").strip()
-    if not s:
+    if not s or s.lower() in _FECHA_INVALID:
         return ""
     m = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
     if m:
@@ -1265,13 +1509,60 @@ def _norm_fecha(s: str) -> str:
     return s
 
 
+def _preparse_excel_yesno(s: str) -> str:
+    """
+    Limpia valores de Excel/CSV típicos antes de interpretar Sí/No:
+    - Sufijos tipo \"Sí +1\"
+    - Carácter de reemplazo UTF-8 (p. ej. S\uFFFD → Sí) por codificación mala
+    - Cadenas \"no dato\" (se devuelve vacío para dejar heurísticas / defaults)
+    """
+    t = str(s or "").strip()
+    if not t:
+        return ""
+    t = re.sub(r"\s*\+\d+\s*$", "", t, flags=re.IGNORECASE)
+    t = t.strip()
+    if len(t) >= 2 and t[0] in "Ss" and t[1] == "\ufffd":  # U+FFFD (S� por UTF-8 roto)
+        t = t[0] + "í" + t[2:]
+    low = t.lower()
+    if low in {
+        "n/d",
+        "n / d",
+        "n/d",
+        "nd",
+        "n d",
+        "n.d",
+        "n.d.",
+        "na",
+        "n a",
+        "-",
+        "—",
+        "–",
+    }:
+        return ""
+    return t
+
+
 def _parse_si_no(s: str) -> str:
-    """Sí/No/SI/NO/1/0 → "1" o "0"."""
-    v = str(s or "").strip().lower()
-    if v in ("sí", "si", "s", "yes", "1"):
+    """Sí/No/SI/NO/1/0/true/false/verdadero/falso → '1' o '0' (vacío = no interpretable)."""
+    t = _preparse_excel_yesno(s)
+    v = t.lower()
+    v = v.replace("sí", "si")
+    v = re.sub(r"\s+", " ", v).strip()
+    if v in (
+        "si",
+        "s",
+        "yes",
+        "y",
+        "1",
+        "true",
+        "t",
+        "verdadero",
+    ):
         return "1"
-    if v in ("no", "n", "0"):
+    if v in ("no", "n", "0", "false", "f", "falso"):
         return "0"
+    if len(v) == 1 and v in ("1", "0"):
+        return v
     return ""
 
 
@@ -1338,11 +1629,14 @@ SERVICIOS_CANONICOS = frozenset(SERVICIO_ALIAS.values())
 
 
 def _norm_servicio(s: str) -> str:
-    """Normaliza el valor de servicio del Excel al valor exacto del formulario KoboToolbox."""
+    """Normaliza el valor de servicio del Excel al valor exacto del formulario KoboToolbox.
+
+    Si el valor no coincide con ningún servicio conocido, retorna "Medicina General".
+    """
     s = str(s or "").strip()
     s = re.sub(r"\s*\+\d+\s*$", "", s).strip()
     if not s:
-        return s
+        return "Medicina General"
     # Búsqueda exacta (sin tildes para robustez)
     s_norm = _norm_str(s)
     for key, val in SERVICIO_ALIAS.items():
@@ -1352,7 +1646,32 @@ def _norm_servicio(s: str) -> str:
     for key, val in SERVICIO_ALIAS.items():
         if _norm_str(key) in s_norm and len(_norm_str(key)) > 3:
             return val
-    return s
+    return "Medicina General"
+
+
+def _norm_asesprev_celda(s: str) -> str:
+    """
+    Una celda de ASESPREV: módulo del formulario o la opción explícita «No Aplica».
+    Nunca pasa cadenas vacías por _norm_servicio (que convertiría '' en «Medicina General»).
+    """
+    t = str(s or "").strip()
+    if not t:
+        return ""
+    n = _norm_str(t)
+    if t == "No Aplica" or n in (
+        "no aplica",
+        "no_aplica",
+        "n/a",
+        "n a",
+        "na",
+        "n d",
+        "nd",
+        "ninguno",
+        "ninguna",
+        "n/d",
+    ):
+        return "No Aplica"
+    return _norm_servicio(t)
 
 
 # Opciones válidas del formulario para ME_ML (¿Mujer embarazada o en periodo de lactancia?)

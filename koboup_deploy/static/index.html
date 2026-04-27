@@ -2,12 +2,33 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <script>
+    (function () {
+      var p = location.pathname;
+      var h;
+      if (p.endsWith('/')) h = p;
+      else {
+        var i = p.lastIndexOf('/');
+        if (i <= 0) h = p + '/';
+        else {
+          var last = p.substring(i + 1);
+          h = last.indexOf('.') > 0 ? p.substring(0, i + 1) : p + '/';
+        }
+      }
+      if (h === '//' || h === '') h = '/';
+      var el = document.createElement('base');
+      el.setAttribute('href', h);
+      var head = document.head;
+      if (head && head.prepend) head.prepend(el);
+      else if (head) head.insertBefore(el, head.firstChild);
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KoboUp — Gestión de Archivos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="static/style.css?v=20260411a">
+  <link rel="stylesheet" href="static/style.css?v=20260425bin">
 </head>
 <body>
 
@@ -43,6 +64,18 @@
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 1012 0V2Z"/></svg>
         Ranking
       </button>
+      <button class="main-nav-btn" data-section="audit">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Bitácora Kobo
+      </button>
+      <button class="main-nav-btn" data-section="search">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        Búsqueda
+      </button>
+      <button class="main-nav-btn" data-section="kpi">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16l4-4 3 3 4-4"/><path d="M7 8h.01M11 8h.01M15 8h.01"/></svg>
+        KPI de atención
+      </button>
     </div>
   </nav>
 
@@ -54,27 +87,9 @@
         <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
       </div>
       <div class="kpi-hero-number" id="kpiPatients">—</div>
-      <div class="kpi-hero-label">Pacientes registrados</div>
-      <div class="kpi-hero-sub" id="kpiPatientsDetail">sin duplicados ya validados</div>
+      <div class="kpi-hero-label">Archivos descargados de KoboUp</div>
+      <div class="kpi-hero-sub" id="kpiPatientsDetail">analizando archivos validados</div>
     </section>
-
-    <section class="panel">
-      <div class="panel-header"><h2>KPI de atención</h2></div>
-      <div class="panel-body">
-        <div class="kpi-mini-grid" id="kpiSummaryGrid">
-          <div class="kpi-mini-card">
-            <div class="kpi-mini-label">Consultas totales</div>
-            <div class="kpi-mini-value" id="kpiConsultations">—</div>
-            <div class="kpi-mini-sub">Por especialidad</div>
-          </div>
-        </div>
-        <div class="kpi-section-title">Consultas por especialidad</div>
-        <div class="kpi-mini-grid" id="kpiSpecialties"></div>
-        <div class="kpi-section-title">Insumos entregados totales</div>
-        <div class="kpi-mini-grid" id="kpiSupplies"></div>
-      </div>
-    </section>
-
 
     <section class="panel">
       <div class="panel-header"><h2>Subir archivo</h2></div>
@@ -216,6 +231,159 @@
       </div>
     </section>
 
+  </main>
+
+  <!-- ═══════════════ SECCIÓN 4: Bitácora Kobo ═══════════════ -->
+  <main class="container section-content" id="sectionAudit" style="display:none">
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Bitácora de envíos a Kobo</h2>
+        <div class="panel-header-actions">
+          <button type="button" id="btnKoboLogsRefresh" class="btn btn-icon" title="Actualizar">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <p class="muted" style="margin-top:0">Auditoría rápida de quién envió, cuándo y el resultado (enviadas/fallidas).</p>
+        <div class="kpi-table-wrap">
+          <table class="kpi-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Responsable</th>
+                <th>Archivo</th>
+                <th>Seleccionadas</th>
+                <th>Enviadas</th>
+                <th>Fallidas</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="koboLogsTableBody">
+              <tr><td colspan="7">Sin registros todavía.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══════════════ SECCIÓN 5: Búsqueda en validados ═══════════════ -->
+  <main class="container section-content" id="sectionSearch" style="display:none">
+    <section class="panel search-panel">
+      <div class="panel-header">
+        <h2>Búsqueda en archivos validados</h2>
+      </div>
+      <div class="panel-body">
+        <p class="muted" style="margin-top:0">Busque por nombre de paciente, teléfono, texto de cualquier celda o en el nombre del archivo. La búsqueda ignora mayúsculas y acentos.</p>
+        <div class="search-toolbar">
+          <div class="search-box-wrap">
+            <input type="search" id="searchValidatedInput" class="input-flat search-box-input" placeholder="Escriba al menos 2 caracteres…" autocomplete="off" maxlength="200">
+            <button type="button" id="btnSearchValidated" class="btn btn-primary">Buscar</button>
+            <button type="button" id="btnSearchValidatedClear" class="btn btn-outline">Limpiar</button>
+          </div>
+          <div class="search-filters">
+            <label class="search-filter">
+              <span>Ámbito</span>
+              <select id="searchValidatedScope" class="input-flat">
+                <option value="all" selected>Contenido + metadatos del archivo</option>
+                <option value="rows">Solo filas (Excel/CSV)</option>
+                <option value="metadata">Solo nombre, nota, responsable</option>
+              </select>
+            </label>
+            <label class="search-filter">
+              <span>Máx. resultados</span>
+              <select id="searchValidatedLimit" class="input-flat">
+                <option value="100">100</option>
+                <option value="200" selected>200</option>
+                <option value="400">400</option>
+                <option value="1000">1000</option>
+              </select>
+            </label>
+            <label class="search-filter">
+              <span>Por archivo (tope)</span>
+              <select id="searchValidatedPerFile" class="input-flat">
+                <option value="10">10</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <p id="searchValidatedStatus" class="search-status" aria-live="polite"></p>
+        <div class="kpi-table-wrap">
+          <table class="kpi-table search-results-table" id="searchResultsTable" style="display:none">
+            <thead>
+              <tr>
+                <th>Archivo</th>
+                <th>Origen</th>
+                <th>Fila</th>
+                <th>Columna</th>
+                <th>Texto / coincidencia</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody id="searchResultsBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══════════════ SECCIÓN: KPI de atención (fuera de la pantalla principal) ═══════════════ -->
+  <main class="container section-content" id="sectionKpi" style="display:none">
+    <section class="panel">
+      <div class="panel-header"><h2>KPI de atención</h2></div>
+      <div class="panel-body">
+        <p class="muted" style="margin-top:0">Indicadores agregados sobre archivos validados e insumos. Los mismos datos de la tarjeta superior también se actualizan al entrar a esta pestaña.</p>
+        <div class="kpi-mini-grid" id="kpiSummaryGrid">
+          <div class="kpi-mini-card">
+            <div class="kpi-mini-label">Pacientes registrados</div>
+            <div class="kpi-mini-value" id="kpiPatientsCount">—</div>
+            <div class="kpi-mini-sub">Sin duplicados</div>
+          </div>
+          <div class="kpi-mini-card">
+            <div class="kpi-mini-label">Consultas totales</div>
+            <div class="kpi-mini-value" id="kpiConsultations">—</div>
+            <div class="kpi-mini-sub">Por especialidad</div>
+          </div>
+          <div class="kpi-mini-card">
+            <div class="kpi-mini-label">Insumos entregados totales</div>
+            <div class="kpi-mini-value" id="kpiSuppliesTotal">—</div>
+            <div class="kpi-mini-sub">Kit dental + medicamento + lentes</div>
+          </div>
+          <div class="kpi-mini-card">
+            <div class="kpi-mini-label">Total general</div>
+            <div class="kpi-mini-value" id="kpiGrandTotal">—</div>
+            <div class="kpi-mini-sub">Consultas + insumos</div>
+          </div>
+        </div>
+        <div class="kpi-section-title">Consultas por especialidad</div>
+        <div class="kpi-mini-grid" id="kpiSpecialties"></div>
+        <div class="kpi-section-title">Insumos entregados totales</div>
+        <div class="kpi-mini-grid" id="kpiSupplies"></div>
+        <div class="kpi-section-title">Odontología</div>
+        <div class="kpi-mini-grid" id="kpiDentalProcedures"></div>
+        <div class="kpi-section-title">Insumos por archivo</div>
+        <div class="kpi-table-wrap">
+          <table class="kpi-table">
+            <thead>
+              <tr>
+                <th>Archivo</th>
+                <th>Kit dental</th>
+                <th>Medicamento</th>
+                <th>Lentes</th>
+                <th>Total insumos</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody id="kpiSuppliesByFile"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- ═══════════════ SECCIÓN 2: PDFs de referencia ═══════════════ -->
@@ -533,11 +701,131 @@
     </div>
   </div>
 
+  <!-- Editor de tabla completo (hoja) -->
+  <div class="sheet-editor-overlay" id="sheetEditorOverlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="sheetEditorTitle">
+    <div class="sheet-editor-inner">
+      <header class="sheet-editor-top">
+        <div>
+          <h2 id="sheetEditorTitle" class="sheet-editor-title">Editar tabla</h2>
+          <p class="sheet-editor-hint" id="sheetEditorHint">Revise datos clave, corrija lo faltante y luego envíe filas a Kobo de forma masiva.</p>
+          <p class="sheet-editor-status" id="sheetEditorStatus" aria-live="polite"></p>
+        </div>
+        <div class="sheet-editor-actions">
+          <button type="button" class="btn btn-outline" id="sheetAddRow" title="Añadir fila al final">+ Fila</button>
+          <button type="button" class="btn btn-outline" id="sheetAddCol" title="Añadir columna al final">+ Columna</button>
+          <div class="sheet-rm-col">
+            <label for="sheetColRemove" class="visually-hidden">Quitar columna</label>
+            <select id="sheetColRemove" class="input-flat input-flat-tiny" title="Quitar columna por nombre">
+              <option value="">— Quitar columna —</option>
+            </select>
+            <button type="button" class="btn btn-outline" id="sheetColRemoveGo">Quitar</button>
+          </div>
+          <button type="button" class="btn btn-outline" id="sheetToggleColumnMode" title="Mostrar u ocultar columnas no relevantes">
+            Mostrar todas las columnas
+          </button>
+          <span class="sheet-sep" aria-hidden="true"></span>
+          <button type="button" class="btn btn-outline-blue" id="sheetApplySuggestions" style="display:none">Corregir nombres sugeridos</button>
+          <button type="button" class="btn btn-outline" id="sheetOpenGuide">Ver guía</button>
+          <button type="button" class="btn btn-outline-purple" id="sheetSubmitKobo">Subir a Kobo</button>
+          <button type="button" class="btn btn-outline-green" id="sheetMarkEditedValidated">Marcar Editado Validado</button>
+          <button type="button" class="btn btn-primary" id="sheetSave">Guardar todo</button>
+          <button type="button" class="btn btn-ghost" id="sheetClose">Cerrar</button>
+        </div>
+      </header>
+      <div id="sheetColumnsCheck" class="sheet-columns-check"></div>
+      <div class="sheet-editor-meta">
+        <div class="form-group form-group-tight">
+          <label for="sheetOriginalName">Nombre del archivo (visible) <span class="required">*</span></label>
+          <input type="text" id="sheetOriginalName" class="input-flat" autocomplete="off">
+        </div>
+        <div class="form-group form-group-tight">
+          <label for="sheetUploadedBy">Responsable (editor actual)</label>
+          <input type="text" id="sheetUploadedBy" class="input-flat" autocomplete="off" readonly>
+        </div>
+        <div class="form-group form-group-tight">
+          <label for="sheetNotes">Nota</label>
+          <input type="text" id="sheetNotes" class="input-flat" autocomplete="off">
+        </div>
+        <div class="sheet-meta-btns">
+          <button type="button" class="btn-text" id="sheetOpenMetaOnly" title="Abre el modal con solo nota, nombre y responsable">Solo nota e información (modal)</button>
+        </div>
+      </div>
+      <div class="sheet-table-scroll" id="sheetTableScroll">
+        <div id="sheetTableWrap" class="sheet-table-wrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal subir filas a Kobo -->
+  <div class="modal-overlay" id="koboSubmitModalOverlay" style="display:none">
+    <div class="modal modal-validate-wide">
+      <h3>Subir a Kobo</h3>
+      <p class="modal-filename" id="koboSubmitModalFilename"></p>
+      <p class="val-step-desc">Paso 1: selecciona una fila o todas las filas que quieres enviar.</p>
+      <div class="kobo-submit-toolbar">
+        <label class="toggle-chip">
+          <input type="checkbox" id="koboSubmitSelectAll">
+          <span>Enviar todas las filas</span>
+        </label>
+      </div>
+      <div class="kobo-submit-table-wrap">
+        <table class="kobo-submit-table">
+          <thead>
+            <tr>
+              <th>Enviar</th>
+              <th>Fila</th>
+              <th>Paciente</th>
+              <th>Servicio</th>
+            </tr>
+          </thead>
+          <tbody id="koboSubmitRows"></tbody>
+        </table>
+      </div>
+      <div class="form-group" style="margin-top:0.7rem">
+        <label for="koboSubmitPassword">Paso 2: contraseña de autorización <span class="required">*</span></label>
+        <input type="password" id="koboSubmitPassword" class="input-flat" placeholder="Escribe la contraseña">
+      </div>
+      <div id="koboSubmitMsg" class="toast-msg"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="koboSubmitCancel">Cancelar</button>
+        <button class="btn btn-primary" id="koboSubmitConfirm">Paso 3: autorizar envío</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal para editar metadatos del archivo -->
+  <div class="modal-overlay" id="editModalOverlay" style="display:none">
+    <div class="modal">
+      <div class="modal-icon-wrap">
+        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+      </div>
+      <h3>Editar archivo</h3>
+      <p class="modal-filename" id="editModalFilename"></p>
+      <div class="form-group">
+        <label>Nombre visible del archivo <span class="required">*</span></label>
+        <input type="text" id="editModalOriginalName" class="input-flat" placeholder="Nombre original del archivo">
+      </div>
+      <div class="form-group">
+        <label>Responsable</label>
+        <input type="text" id="editModalUploadedBy" class="input-flat" placeholder="Persona que subió el archivo">
+      </div>
+      <div class="form-group">
+        <label>Nota</label>
+        <input type="text" id="editModalNotes" class="input-flat" placeholder="Comentario opcional">
+      </div>
+      <div id="editModalMsg" class="toast-msg"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="editModalCancel">Cancelar</button>
+        <button class="btn btn-primary" id="editModalConfirm">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
   <footer class="footer">
     <p>KoboUp — Sistema de gestión de archivos &middot; Clínica Adventista</p>
   </footer>
 
-  <script src="static/app.js?v=20260411a"></script>
-  <script src="static/kpi.js?v=20260414a"></script>
+  <script src="static/app.js?v=20260427kpiTab"></script>
+  <script src="static/kpi.js?v=20260427kpiTab"></script>
 </body>
 </html>

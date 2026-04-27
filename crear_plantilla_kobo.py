@@ -41,8 +41,23 @@ COLUMNS = [
 
     # --- OPCIONALES (con defaults automáticos) ---
     ("Modalidad", "Modalidad_de_la_atenci_n", False,
-     ["Móvil", "Fija"], 14,
-     "Default: 'Móvil'. Tipo de atención."),
+     [
+         "Móvil",
+         "Albergues",
+         "Centros Comunitarios",
+         "Clínica Adventista",
+         "Escuelas",
+     ],
+     20,
+     "Debe coincidir con el formulario Kobo. Con «Escuelas» rellene además la columna SCH (colegio o comunidad)."),
+    (
+        "Especificar colegio o comunidad (SCH)",
+        "SCH",
+        False,
+        None,
+        32,
+        "Solo relevante con Modalidad = Escuelas. Nombre del colegio o de la comunidad; no se copia de «Lugar de atención» en otras modalidades.",
+    ),
     ("Primera vez o Seguimiento", "followup", False,
      ["Primera vez", "Seguimiento", "Atención Única"], 24,
      "Default: 'Primera vez'. Valores exactos del formulario."),
@@ -327,7 +342,11 @@ def create_template():
         ("Servicio que se brinda", ["Medicina General", "Dental", "Oftalmología", "Fisioterapia", "Laboratorios"]),
         ("Sexo (se traduce)", ["F → Femenino", "M → Masculino"]),
         ("Estado (POC)", ["Baja California Sur", "Chihuahua", "Sonora", "Baja California", "Nuevo León"]),
-        ("Modalidad", ["Móvil", "Fija"]),
+        (
+            "Modalidad",
+            ["Móvil", "Albergues", "Centros Comunitarios", "Clínica Adventista", "Escuelas"],
+        ),
+        ("Especificar colegio o comunidad (SCH) (con Escuelas)", ["Texto libre — colegio o comunidad"]),
         ("Primera vez / Seguimiento", ["Primera vez", "Seguimiento", "Atención Única"]),
         ("Estatus migratorio", [
             "Ciudadano Mexicano", "Solicitante de asilo", "Refugiado",

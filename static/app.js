@@ -387,7 +387,53 @@
     NAT: 'Nacionalidad', lat: 'Latitud', long: 'Longitud', alt: 'Altitud (m)', acc: 'Precisión (m)',
     ME_ML: '¿Embarazada / Lactancia?',
     Unidades_entregadas: 'Unidades entregadas',
-    Especifique_qu_se_entrega: 'Especifica qué se entrega'
+    Especifique_qu_se_entrega: 'Especifica qué se entrega',
+    CONS1: 'Consentimiento inicial',
+    NATOT: 'Nacionalidad (especificar)',
+    Especificar_Minor_a_tnica: 'Especificar minoría étnica',
+    estatus_migra: 'Estatus migratorio',
+    AGEMO: 'Edad en meses',
+    IMC: 'IMC',
+    Pesoprepreg: 'Peso pre gestacional',
+    SDG: 'Semanas de gestación',
+    BCS: 'Lugar BCS',
+    CHIH: 'Lugar Chihuahua',
+    Lugar_de_Atenci_n_Baja_Califo: 'Lugar Baja California',
+    Lugar_de_Atenci_n_Nuevo_Le_n: 'Lugar Nuevo León',
+    Lugar_de_Atenci_n_Sonora: 'Lugar Sonora',
+    SCH: 'Lugar Escuelas',
+    PLACE: 'Especificar colegio/comunidad',
+    OTH: 'Especificar lugar (otro)',
+    Diagn_stico_001: 'Diagnóstico Odontología',
+    Especificar_002: 'Especificar diagnóstico odontología',
+    _Se_realiza_procedimiento_odon: '¿Se realiza procedimiento odontológico?',
+    _Qupe_procedimiento_se_realiza: 'Procedimiento odontológico',
+    Especificar_003: 'Especificar procedimiento odontológico',
+    S_ntomas_que_presenta_a_la_fec: 'Síntomas oftalmología',
+    Especifique_s_ntoma: 'Especificar síntoma',
+    _Ha_recibido_alg_n_diagn_stico: 'Diagnóstico previo oftalmología',
+    Especifique_diagn_stico_previo: 'Especificar diagnóstico previo',
+    Diagn_stico_002: 'Diagnóstico actual oftalmología',
+    Otro_diagn_stico: 'Otro diagnóstico oftalmología',
+    _Requiere_anteojos: '¿Requiere anteojos?',
+    REF: '¿Se hizo referencia?',
+    REFORG: '¿A dónde?',
+    REFSPEC: 'Especificar referencia',
+    MEDREF: 'Motivo de referencia',
+    SPREFMOTMED: 'Especificar motivo referencia',
+    DIS: 'Discapacidad',
+    Especificar_discapacidad: 'Especificar discapacidad',
+    DX: 'Diagnósticos medicina general',
+    dxesp: 'Especificar diagnóstico',
+    Localizaci_n_de_la_lesi_n: 'Localización lesión',
+    Especificar_001: 'Especificar localización',
+    FE: 'Suplemento hierro',
+    FA: 'Suplemento ácido fólico',
+    Fotograf_a_de_la_Rec_Acuse_de_recibi_etc: 'Foto receta/acuse',
+    CONS: 'Consentimiento informado verbal',
+    ASESPREV: 'Asesoría previa en módulos',
+    POC: 'Estado brigada (POC)',
+    Ubicaci_n_geogr_fica_de_la_atenci_n: 'Ubicación geográfica'
   };
 
   var COLUMN_SELECT_OPTIONS = {
@@ -402,6 +448,234 @@
 
   function normText(s) {
     return (s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  var ALWAYS_VISIBLE_COLUMNS = [
+    'Fecha_de_atenci_n', 'CONS1', 'Modalidad_de_la_atenci_n', 'POC',
+    'BCS', 'CHIH', 'Lugar_de_Atenci_n_Sonora', 'Lugar_de_Atenci_n_Baja_Califo',
+    'Lugar_de_Atenci_n_Nuevo_Le_n', 'SCH', 'PLACE', 'OTH',
+    'Ubicaci_n_geogr_fica_de_la_atenci_n',
+    'followup', 'ASESPREV', 'Servicio_que_se_brinda',
+    'NAME', 'NAT', 'NATOT', 'Estado', '_Pertenece_a_alguna_minor_a_t',
+    'Especificar_Minor_a_tnica', 'estatus_migra', 'SEX', 'DOB', 'ME_ML',
+    'AGE', 'AGEMO', 'HEI', 'WEI', 'IMC', 'Pesoprepreg', 'SDG', 'HPI',
+    'DIS', 'Especificar_discapacidad', 'DX', 'dxesp',
+    'Diagn_stico', 'Especificar', 'Localizaci_n_de_la_lesi_n', 'Especificar_001',
+    'Diagn_stico_001', 'Especificar_002',
+    'S_ntomas_que_presenta_a_la_fec', 'Especifique_s_ntoma',
+    '_Ha_recibido_alg_n_diagn_stico', 'Especifique_diagn_stico_previo',
+    'Diagn_stico_002', 'Otro_diagn_stico',
+    '_Se_realiza_procedimiento_odon', '_Qupe_procedimiento_se_realiza', 'Especificar_003',
+    'entrega_tx', 'TX', '_Requiere_anteojos', 'Especifique_qu_se_entrega',
+    'Especificar_lo_que_se_entrega_', 'FE', 'FA', 'Unidades_entregadas',
+    'Plan_de_Tratamiento', 'Fotograf_a_de_la_Rec_Acuse_de_recibi_etc',
+    'REF', 'REFORG', 'REFSPEC', 'MEDREF', 'SPREFMOTMED',
+    'CONS', 'CGR'
+  ];
+
+  var FIELD_ALIASES = {
+    CONS1: { '1': ['1', 'si', 'sí', 'yes'] },
+    NAT: { '1': ['1', 'mexico', 'méxico'], '14': ['14', 'otro'] },
+    _Pertenece_a_alguna_minor_a_t: { si: ['si', 'sí', '1'] },
+    SEX: { '2': ['2', 'femenino', 'female', 'f', 'mujer'] },
+    ME_ML: {
+      '1': ['1', 'embarazada', 'embarazo'],
+      '2_1': ['2_1', 'lactancia', 'lactante'],
+      '0': ['0', 'no aplica', 'na', 'n/a']
+    },
+    POC: {
+      '1': ['1', 'baja california sur', 'baja californa sur', 'bcs'],
+      '2': ['2', 'chihuahua'],
+      '3': ['3', 'sonora'],
+      '4': ['4', 'otro'],
+      baja_california: ['baja_california', 'baja california'],
+      nuevo_le_n: ['nuevo_le_n', 'nuevo leon', 'nuevo león']
+    },
+    BCS: { '4': ['4', 'otro'] },
+    CHIH: { '2': ['2', 'otro'] },
+    Lugar_de_Atenci_n_Sonora: { '2': ['2', 'otro'] },
+    Lugar_de_Atenci_n_Baja_Califo: { otro: ['otro'] },
+    Lugar_de_Atenci_n_Nuevo_Le_n: { otro: ['otro'] },
+    SCH: {
+      '1': ['1', 'escuela nivel primaria'],
+      '2': ['2', 'escuela nivel secundaria'],
+      '3': ['3', 'bachillerato'],
+      '4': ['4', 'otro']
+    },
+    Modalidad_de_la_atenci_n: {
+      '1': ['1', 'movil', 'móvil'],
+      escuelas: ['escuelas']
+    },
+    Servicio_que_se_brinda: {
+      '1': ['1', 'medicina general'],
+      '2': ['2', 'dental', 'odontologia', 'odontología'],
+      '3': ['3', 'fisioterapia'],
+      '4': ['4', 'oftalmologia', 'oftalmología'],
+      laboratorios: ['laboratorios', 'laboratorio', 'lab']
+    },
+    _Se_realiza_procedimiento_odon: { Yes: ['yes', 'si', 'sí', '1'] },
+    _Qupe_procedimiento_se_realiza: { '6': ['6', 'otro'] },
+    entrega_tx: { Yes: ['yes', 'si', 'sí', '1'] },
+    Especifique_qu_se_entrega: { otro: ['otro'] },
+    DIS: { '5': ['5', 'otra', 'otro'] },
+    DX: { '22': ['22', 'otro'] },
+    Diagn_stico: { '3': ['3', 'lesiones musculoesqueleticas', 'lesiones musculoesqueléticas'], '7': ['7', 'otro'] },
+    Localizaci_n_de_la_lesi_n: { '0': ['0', 'otro'] },
+    Diagn_stico_001: { '9': ['9', 'otro'] },
+    S_ntomas_que_presenta_a_la_fec: { otro: ['otro'] },
+    _Ha_recibido_alg_n_diagn_stico: { otro: ['otro'] },
+    Diagn_stico_002: { otro: ['otro'] },
+    REF: { Yes: ['yes', 'si', 'sí', '1'] },
+    MEDREF: { '0': ['0', 'otro'] }
+  };
+
+  function splitMulti(raw) {
+    if (raw == null) return [];
+    return String(raw)
+      .split(/\|\|\||,|;/)
+      .map(function (p) { return normText(p); })
+      .filter(Boolean);
+  }
+
+  function valueMatches(field, rawValue, expected) {
+    var aliases = ((FIELD_ALIASES[field] || {})[expected] || [expected]).map(normText);
+    var tokens = splitMulti(rawValue);
+    if (tokens.length === 0) tokens = [normText(rawValue)];
+    return aliases.some(function (a) {
+      return tokens.some(function (t) { return t === a; });
+    });
+  }
+
+  function selectedIncludes(field, rawValue, expected) {
+    return valueMatches(field, rawValue, expected);
+  }
+
+  function getRowRecord(tr) {
+    var rec = {};
+    tr.querySelectorAll('input[data-col], select[data-col], textarea[data-col]').forEach(function (el) {
+      var col = el.getAttribute('data-col');
+      if (!col) return;
+      rec[col] = el.value;
+    });
+    return rec;
+  }
+
+  var FIELD_RULES = {
+    NAME: function (rec) { return valueMatches('CONS1', rec.CONS1, '1'); },
+    NATOT: function (rec) { return valueMatches('NAT', rec.NAT, '14'); },
+    Estado: function (rec) { return valueMatches('NAT', rec.NAT, '1'); },
+    _Pertenece_a_alguna_minor_a_t: function (rec) { return valueMatches('NAT', rec.NAT, '1'); },
+    Especificar_Minor_a_tnica: function (rec) { return valueMatches('_Pertenece_a_alguna_minor_a_t', rec._Pertenece_a_alguna_minor_a_t, 'si'); },
+    estatus_migra: function (rec) { return !valueMatches('NAT', rec.NAT, '1'); },
+    ME_ML: function (rec) { return valueMatches('SEX', rec.SEX, '2'); },
+    AGEMO: function (rec) { return Number(rec.AGE || 0) < 2; },
+    IMC: function (rec) { return Number(rec.AGE || 0) > 17; },
+    Pesoprepreg: function (rec) { return valueMatches('ME_ML', rec.ME_ML, '1'); },
+    SDG: function (rec) { return valueMatches('ME_ML', rec.ME_ML, '1'); },
+    BCS: function (rec) { return valueMatches('POC', rec.POC, '1'); },
+    CHIH: function (rec) { return valueMatches('POC', rec.POC, '2'); },
+    Lugar_de_Atenci_n_Sonora: function (rec) { return valueMatches('POC', rec.POC, '3'); },
+    Lugar_de_Atenci_n_Baja_Califo: function (rec) { return valueMatches('POC', rec.POC, 'baja_california'); },
+    Lugar_de_Atenci_n_Nuevo_Le_n: function (rec) { return valueMatches('POC', rec.POC, 'nuevo_le_n'); },
+    SCH: function (rec) { return valueMatches('Modalidad_de_la_atenci_n', rec.Modalidad_de_la_atenci_n, 'escuelas'); },
+    PLACE: function (rec) {
+      return valueMatches('SCH', rec.SCH, '1')
+        || valueMatches('SCH', rec.SCH, '2')
+        || valueMatches('SCH', rec.SCH, '3')
+        || valueMatches('Modalidad_de_la_atenci_n', rec.Modalidad_de_la_atenci_n, '1');
+    },
+    OTH: function (rec) {
+      return valueMatches('POC', rec.POC, '4')
+        || valueMatches('BCS', rec.BCS, '4')
+        || valueMatches('CHIH', rec.CHIH, '2')
+        || valueMatches('Lugar_de_Atenci_n_Sonora', rec.Lugar_de_Atenci_n_Sonora, '2')
+        || valueMatches('SCH', rec.SCH, '4')
+        || valueMatches('Lugar_de_Atenci_n_Baja_Califo', rec.Lugar_de_Atenci_n_Baja_Califo, 'otro')
+        || valueMatches('Lugar_de_Atenci_n_Nuevo_Le_n', rec.Lugar_de_Atenci_n_Nuevo_Le_n, 'otro');
+    },
+    DIS: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '1'); },
+    Especificar_discapacidad: function (rec) { return selectedIncludes('DIS', rec.DIS, '5'); },
+    DX: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '1'); },
+    dxesp: function (rec) { return selectedIncludes('DX', rec.DX, '22'); },
+    Diagn_stico: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '3'); },
+    Especificar: function (rec) { return selectedIncludes('Diagn_stico', rec.Diagn_stico, '7'); },
+    Localizaci_n_de_la_lesi_n: function (rec) { return selectedIncludes('Diagn_stico', rec.Diagn_stico, '3'); },
+    Especificar_001: function (rec) { return selectedIncludes('Localizaci_n_de_la_lesi_n', rec.Localizaci_n_de_la_lesi_n, '0'); },
+    Diagn_stico_001: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '2'); },
+    Especificar_002: function (rec) { return selectedIncludes('Diagn_stico_001', rec.Diagn_stico_001, '9'); },
+    S_ntomas_que_presenta_a_la_fec: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '4'); },
+    Especifique_s_ntoma: function (rec) { return selectedIncludes('S_ntomas_que_presenta_a_la_fec', rec.S_ntomas_que_presenta_a_la_fec, 'otro'); },
+    _Ha_recibido_alg_n_diagn_stico: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '4'); },
+    Especifique_diagn_stico_previo: function (rec) { return selectedIncludes('_Ha_recibido_alg_n_diagn_stico', rec._Ha_recibido_alg_n_diagn_stico, 'otro'); },
+    Diagn_stico_002: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '4'); },
+    Otro_diagn_stico: function (rec) { return selectedIncludes('Diagn_stico_002', rec.Diagn_stico_002, 'otro'); },
+    _Se_realiza_procedimiento_odon: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '2'); },
+    _Qupe_procedimiento_se_realiza: function (rec) { return valueMatches('_Se_realiza_procedimiento_odon', rec._Se_realiza_procedimiento_odon, 'Yes'); },
+    Especificar_003: function (rec) { return selectedIncludes('_Qupe_procedimiento_se_realiza', rec._Qupe_procedimiento_se_realiza, '6'); },
+    TX: function (rec) { return valueMatches('entrega_tx', rec.entrega_tx, 'Yes'); },
+    _Requiere_anteojos: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '4'); },
+    Especifique_qu_se_entrega: function (rec) { return valueMatches('entrega_tx', rec.entrega_tx, 'Yes'); },
+    Especificar_lo_que_se_entrega_: function (rec) { return valueMatches('Especifique_qu_se_entrega', rec.Especifique_qu_se_entrega, 'otro'); },
+    FE: function (rec) { return valueMatches('ME_ML', rec.ME_ML, '1') || valueMatches('ME_ML', rec.ME_ML, '2_1'); },
+    FA: function (rec) { return valueMatches('ME_ML', rec.ME_ML, '1'); },
+    Unidades_entregadas: function (rec) { return valueMatches('entrega_tx', rec.entrega_tx, 'Yes'); },
+    Plan_de_Tratamiento: function (rec) { return valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '3'); },
+    Fotograf_a_de_la_Rec_Acuse_de_recibi_etc: function (rec) { return normText(rec.TX || '') !== ''; },
+    REFORG: function (rec) { return valueMatches('REF', rec.REF, 'Yes'); },
+    REFSPEC: function (rec) { return valueMatches('REF', rec.REF, 'Yes'); },
+    MEDREF: function (rec) { return valueMatches('REF', rec.REF, 'Yes'); },
+    SPREFMOTMED: function (rec) { return valueMatches('MEDREF', rec.MEDREF, '0'); },
+    REF: function (rec) { return !valueMatches('Servicio_que_se_brinda', rec.Servicio_que_se_brinda, '3'); },
+    CGR: function (rec) { return Number(rec.AGE || 0) < 18; }
+  };
+
+  function applyConditionalStateToRow(tr) {
+    if (!tr) return;
+    var rec = getRowRecord(tr);
+    tr.querySelectorAll('input[data-col], select[data-col], textarea[data-col]').forEach(function (ctrl) {
+      var col = ctrl.getAttribute('data-col');
+      if (!col) return;
+      var rule = FIELD_RULES[col];
+      if (!rule) return;
+      var enabled = true;
+      try {
+        enabled = !!rule(rec);
+      } catch (_) {
+        enabled = true;
+      }
+      ctrl.disabled = !enabled;
+      ctrl.classList.toggle('field-disabled', !enabled);
+      if (!enabled) {
+        ctrl.title = 'Campo deshabilitado por condición del formulario Kobo';
+      } else if (ctrl.title === 'Campo deshabilitado por condición del formulario Kobo') {
+        ctrl.title = '';
+      }
+    });
+  }
+
+  function applyConditionalStateToTable() {
+    var rows = dataTableEl.querySelectorAll('tbody tr');
+    rows.forEach(function (tr) { applyConditionalStateToRow(tr); });
+  }
+
+  function getDisplayColumns(records) {
+    var all = [];
+    var seen = new Set();
+    ALWAYS_VISIBLE_COLUMNS.forEach(function (c) {
+      if (!seen.has(c)) {
+        seen.add(c);
+        all.push(c);
+      }
+    });
+    records.forEach(function (rec) {
+      Object.keys(rec || {}).forEach(function (k) {
+        if (!seen.has(k)) {
+          seen.add(k);
+          all.push(k);
+        }
+      });
+    });
+    return all;
   }
 
   function loadExcelForVerification() {
@@ -580,7 +854,7 @@
     var submittedSet = {};
     (alreadySubmitted || []).forEach(function (i) { submittedSet[i] = true; });
 
-    const cols = Object.keys(records[0]);
+    const cols = getDisplayColumns(records);
     let html = '<thead><tr>';
     html += '<th class="col-select"><input type="checkbox" id="selectAllRows" title="Seleccionar todas" checked></th>';
     html += '<th class="col-status" title="Estado de carga">Estado</th>';
@@ -645,6 +919,8 @@
       }
       _pendingRestoreIndices = null;
     }
+
+    applyConditionalStateToTable();
   }
 
   function getSelectedRowIndices() {
@@ -674,6 +950,16 @@
     });
     return records;
   }
+
+  dataTableEl.addEventListener('input', function (ev) {
+    var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-row]') : null;
+    if (tr) applyConditionalStateToRow(tr);
+  });
+
+  dataTableEl.addEventListener('change', function (ev) {
+    var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-row]') : null;
+    if (tr) applyConditionalStateToRow(tr);
+  });
 
   function renderPdfTable(records) {
     if (!pdfDataTableEl) return;

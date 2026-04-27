@@ -91,6 +91,37 @@ def run_tests():
     except Exception as e:
         nfail += fail("load_excel + validate", e)
 
+    try:
+        from excel_loader import load_excel_to_records
+        from filling_rules import apply_rules
+
+        df = pd.DataFrame([{
+            "Fecha de Atención": "2026-02-17",
+            "Lugar": "Escuela Test",
+            "Nombre del Paciente": "Juana Pérez",
+            "Servicio": "Odontología",
+            "Padecimiento": "Valoración",
+            "Edad": "31",
+            "Sexo": "F",
+            "Estado": "BCS",
+            "Especificar Minoría Étnica": "Maya",
+        }])
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            df.to_excel(f.name, index=False, engine="openpyxl")
+            try:
+                recs = load_excel_to_records(Path(f.name))
+                assert len(recs) == 1
+                r = recs[0]
+                assert r["Especificar_Minor_a_tnica"] == "Maya"
+                out = apply_rules(r)
+                assert out["_Pertenece_a_alguna_minor_a_t"] == "1"
+                assert out["Especificar_Minor_a_tnica"] == "Maya"
+                ok("minoría étnica especificada activa Sí")
+            finally:
+                Path(f.name).unlink(missing_ok=True)
+    except Exception as e:
+        nfail += fail("minoría étnica especificada", e)
+
     # --- filling_rules ---
     print("\n--- filling_rules ---")
     try:

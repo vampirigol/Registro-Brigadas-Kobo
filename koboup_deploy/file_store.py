@@ -24,6 +24,8 @@ VALIDATED_DIR = BASE_DIR / "uploads" / "validados"
 REFERENCES_DIR = BASE_DIR / "uploads" / "referencias"
 
 VALID_STATUSES = ("pendiente", "por_validar", "validado", "reemplazado")
+# TTL corto para evitar bloqueos "pegados" si el navegador cierra sin liberar.
+EDIT_LOCK_TTL_SECONDS = 3 * 60
 
 _COPY_SUFFIX_RE = re.compile(r"\s*\(\d+\)\s*$")
 
@@ -86,6 +88,16 @@ def init_files_db() -> None:
             conn.execute("ALTER TABLE files ADD COLUMN superseded_by INTEGER")
         if "row_count" not in cols:
             conn.execute("ALTER TABLE files ADD COLUMN row_count INTEGER")
+        if "edit_locked_by" not in cols:
+            conn.execute("ALTER TABLE files ADD COLUMN edit_locked_by TEXT")
+        if "edit_lock_at" not in cols:
+            conn.execute("ALTER TABLE files ADD COLUMN edit_lock_at TEXT")
+        if "edited_validated" not in cols:
+            conn.execute("ALTER TABLE files ADD COLUMN edited_validated INTEGER DEFAULT 0")
+        if "edited_validated_by" not in cols:
+            conn.execute("ALTER TABLE files ADD COLUMN edited_validated_by TEXT")
+        if "edited_validated_at" not in cols:
+            conn.execute("ALTER TABLE files ADD COLUMN edited_validated_at TEXT")
 
         conn.execute(
             """
@@ -102,6 +114,27 @@ def init_files_db() -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_refs_location ON ref_files(location)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kobo_submission_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_id INTEGER,
+                file_name TEXT,
+                submitted_by TEXT,
+                selected_total INTEGER NOT NULL,
+                sent_count INTEGER NOT NULL,
+                failed_count INTEGER NOT NULL,
+                submitted_at TEXT NOT NULL,
+                details_json TEXT
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kobo_logs_submitted_at ON kobo_submission_logs(submitted_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kobo_logs_file_id ON kobo_submission_logs(file_id)"
+        )
 
 
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
@@ -382,6 +415,99 @@ def update_row_count(file_id: int, row_count: int) -> None:
         )
 
 
+def update_file_size_and_row_count(
+    file_id: int, size_bytes: int, row_count: int
+) -> None:
+    """Actualiza tamaño en bytes, filas de datos y marcas updated_at (tras guardar tabla)."""
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE files SET size_bytes = ?, row_count = ?, updated_at = ? WHERE id = ?",
+            (size_bytes, row_count, now, file_id),
+        )
+
+
+def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts)
+    except Exception:
+        return None
+
+
+def _is_lock_expired(lock_at: Optional[str]) -> bool:
+    dt = _parse_iso(lock_at)
+    if not dt:
+        return True
+    return (datetime.utcnow() - dt).total_seconds() > EDIT_LOCK_TTL_SECONDS
+
+
+def get_edit_lock(file_id: int) -> Optional[Dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, edit_locked_by, edit_lock_at FROM files WHERE id = ?",
+            (file_id,),
+        ).fetchone()
+    if not row:
+        return None
+    locked_by = row["edit_locked_by"]
+    lock_at = row["edit_lock_at"]
+    if not locked_by or _is_lock_expired(lock_at):
+        return None
+    return {"locked_by": locked_by, "locked_at": lock_at}
+
+
+def acquire_edit_lock(file_id: int, editor_name: str) -> tuple[bool, Optional[Dict[str, Any]]]:
+    editor = str(editor_name or "").strip()
+    if not editor:
+        return False, {"error": "editor_name vacío"}
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, edit_locked_by, edit_lock_at FROM files WHERE id = ?",
+            (file_id,),
+        ).fetchone()
+        if not row:
+            return False, None
+        current_by = (row["edit_locked_by"] or "").strip()
+        current_at = row["edit_lock_at"]
+        if current_by and current_by != editor and not _is_lock_expired(current_at):
+            return False, {"locked_by": current_by, "locked_at": current_at}
+        conn.execute(
+            "UPDATE files SET edit_locked_by = ?, edit_lock_at = ?, updated_at = ? WHERE id = ?",
+            (editor, now, now, file_id),
+        )
+    return True, {"locked_by": editor, "locked_at": now}
+
+
+def refresh_edit_lock(file_id: int, editor_name: str) -> tuple[bool, Optional[Dict[str, Any]]]:
+    return acquire_edit_lock(file_id, editor_name)
+
+
+def release_edit_lock(file_id: int, editor_name: Optional[str] = None, force: bool = False) -> bool:
+    editor = str(editor_name or "").strip()
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        if force:
+            cur = conn.execute(
+                "UPDATE files SET edit_locked_by = NULL, edit_lock_at = NULL, updated_at = ? WHERE id = ?",
+                (now, file_id),
+            )
+            return cur.rowcount > 0
+        if not editor:
+            return False
+        cur = conn.execute(
+            """
+            UPDATE files
+            SET edit_locked_by = NULL, edit_lock_at = NULL, updated_at = ?
+            WHERE id = ? AND edit_locked_by = ?
+            """,
+            (now, file_id, editor),
+        )
+        return cur.rowcount > 0
+
+
 def get_record_stats() -> Dict[str, Any]:
     """Retorna estadísticas de registros (filas) por estado de archivo."""
     with _connect() as conn:
@@ -444,5 +570,66 @@ def get_uploader_stats() -> List[Dict[str, Any]]:
             GROUP BY uploaded_by
             ORDER BY count DESC, last_upload_at DESC
             """
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def log_kobo_submission(
+    *,
+    file_id: Optional[int],
+    file_name: Optional[str],
+    submitted_by: Optional[str],
+    selected_total: int,
+    sent_count: int,
+    failed_count: int,
+    details: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    details_json = None
+    if details:
+        try:
+            import json
+
+            details_json = json.dumps(details, ensure_ascii=False)
+        except Exception:
+            details_json = None
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO kobo_submission_logs (
+                file_id, file_name, submitted_by, selected_total,
+                sent_count, failed_count, submitted_at, details_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                file_id,
+                file_name,
+                submitted_by,
+                int(selected_total),
+                int(sent_count),
+                int(failed_count),
+                now,
+                details_json,
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM kobo_submission_logs WHERE id = ?",
+            (cur.lastrowid,),
+        ).fetchone()
+    return _row_to_dict(row) if row else {}
+
+
+def list_kobo_submission_logs(limit: int = 100) -> List[Dict[str, Any]]:
+    n = max(1, min(int(limit or 100), 500))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, file_id, file_name, submitted_by, selected_total,
+                   sent_count, failed_count, submitted_at, details_json
+            FROM kobo_submission_logs
+            ORDER BY submitted_at DESC
+            LIMIT ?
+            """,
+            (n,),
         ).fetchall()
     return [_row_to_dict(r) for r in rows]

@@ -16,6 +16,7 @@ INTERNAL_COLUMNS = {
     "Estado_paciente", "Procedimiento_dental",
     "esp_odontologia", "esp_fisioterapia", "esp_medicina_general",
     "esp_oftalmologia", "esp_laboratorio",
+    "SCH", "Modalidad_de_la_atenci_n",
 }
 
 
@@ -25,6 +26,30 @@ def _normalize_excel_column_name(name: str) -> str:
         return ""
     s = str(name).strip().rstrip("*").strip()
     return s
+
+
+def _strip_parenthetical(name: str) -> str:
+    """Quita texto entre paréntesis al final: 'Foo (detalle)' → 'Foo'."""
+    idx = name.find("(")
+    if idx > 0:
+        return name[:idx].strip()
+    return name
+
+
+_MOJIBAKE_TABLE = str.maketrans({
+    "\u00DB": "ó",   # Û → ó
+    "\u00C8": "é",   # È → é
+    "\u00CC": "í",   # Ì → í
+    "\u00D2": "ñ",   # Ò → ñ
+    "\u00F8": "¿",   # ø → ¿
+    "\u00D5": "Í",   # Õ → Í
+    "\u02D9": "ú",   # ˙ → ú
+})
+
+
+def _fix_mojibake(name: str) -> str:
+    """Corrige caracteres rotos por codificación incorrecta en CSV-dentro-de-XLSX."""
+    return name.translate(_MOJIBAKE_TABLE)
 
 
 # Mapeo: nombre columna en Excel → nombre columna interno (formulario KoboToolbox)
@@ -61,10 +86,14 @@ EXCEL_TO_INTERNAL = {
     "NAME": "NAME",
     "AGE": "AGE",
     "Fecha": "Fecha_de_atenci_n",
+    "Fecha atención": "Fecha_de_atenci_n",
+    "Fecha Atención": "Fecha_de_atenci_n",
+    "Fecha atencion": "Fecha_de_atenci_n",
     "Fecha de atención": "Fecha_de_atenci_n",
     "Fecha_de_atenci_n": "Fecha_de_atenci_n",
     "Fecha de nacimiento": "DOB",
     "Fecha nacimiento": "DOB",
+    "Fecha Nacimiento": "DOB",
     "DOB": "DOB",
     "SEX": "SEX",
     "Consentimiento": "CONS1",
@@ -79,20 +108,42 @@ EXCEL_TO_INTERNAL = {
     "Coordenadas": "Ubicacion_geografica",
     "Lugar de atención": "Lugar",
     "PLACE": "Lugar",
+    "SCH": "SCH",
+    "Especificar colegio o comunidad (SCH)": "SCH",
+    "Especificar nombre de colegio o comunidad": "SCH",
+    "Lugar de atención: Escuelas": "SCH",
     "Ubicación geográfica": "Ubicacion_geografica",
     "Primera vez o seguimiento": "followup",
+    "Primera vez": "followup",
+    "Primera Vez": "followup",
+    "Primera vez / Seg.": "followup",
     "followup": "followup",
     "Referencia": "Referencia",
     "Se hizo referencia": "Referencia",
+    "Referencia?": "Referencia",
     "Referencia dónde": "Referencia_donde",
     "Referencia_donde": "Referencia_donde",
+    "A donde": "Referencia_donde",
+    "A dónde": "Referencia_donde",
     "Motivo referencia": "Motivo_referencia",
     "Motivo_referencia": "Motivo_referencia",
+    "Motivo Referido": "Motivo_referencia",
+    "Motivo Referencia": "Motivo_referencia",
+    "Motivo": "Motivo_referencia",
     "Servicio Brindado": "Servicio_que_se_brinda",
     "Especialidad": "Servicio_que_se_brinda",
     "Diagnóstico / Motivo": "Diagnostico_Motivo",
     "Diagnóstico / motivo": "Diagnostico_Motivo",
     "Diagnostico_Motivo": "Diagnostico_Motivo",
+    "Diagnóstico / Resultados Laboratorio": "Resultados_Lab_Insumos",
+    "Diagnóstico / Resultados Lab": "Resultados_Lab_Insumos",
+    "Diag. / Resultados Lab": "Resultados_Lab_Insumos",
+    "Diag Lab": "Resultados_Lab_Insumos",
+    "Diag. Lab": "Resultados_Lab_Insumos",
+    "Resultado Laboratorio": "Resultados_Lab_Insumos",
+    "Diagnostico Odontología": "Diagnostico_Motivo",
+    "Diagnostico Oftalmología": "Diagnostico_Motivo",
+    "Padecimiento actual": "Diagnostico_Motivo",
     "Talla / Peso": "Talla_Peso_raw",  # Se separa en HEI y WEI
     "Talla / peso": "Talla_Peso_raw",
     "Resultados Lab / Insumos": "Resultados_Lab_Insumos",
@@ -115,6 +166,10 @@ EXCEL_TO_INTERNAL = {
     "Entrega de Insumos": "entrega_tx",
     "Servicio que se brinda": "Servicio_que_se_brinda",
     "Nacionalidad": "NAT",
+    "Nacionalidad (especificar)": "NATOT",
+    "Especificar (nacionalidad)": "NATOT",
+    "NATOT": "NATOT",
+    "Originario": "Estado_paciente",
     "Estatus migratorio": "estatus_migra",
     "Sexo": "SEX",
     "Fecha de nacimiento": "DOB",
@@ -122,46 +177,78 @@ EXCEL_TO_INTERNAL = {
     "Talla (cm)": "HEI",
     "Peso (kg)": "WEI",
     "Padecimiento médico actual": "Diagnostico_Motivo",
+    "Padecimiento / Motivo": "Diagnostico_Motivo",
+    "Padecimiento/ Motivo": "Diagnostico_Motivo",
+    "Padecimiento/Motivo": "Diagnostico_Motivo",
     "Motivo de la consulta": "Diagnostico_Motivo",
+    "Motivo": "Diagnostico_Motivo",
     "Diagnósticos": "Diagnostico_Motivo",
     "Diagnosticos": "Diagnostico_Motivo",
+    "Entrega trat.": "entrega_tx",
     "Entrega de tratamiento": "entrega_tx",
     "¿Se hizo entrega de tratamiento/artículos al beneficiario o beneficiaria?": "entrega_tx",
+    "¿Se hizo entrega de tratamiento...?": "entrega_tx",
+    "¿Se hizo entrega de trat./art.?": "entrega_tx",
+    "Entrega de tratamiento?": "entrega_tx",
     "¿Se hizo referencia?": "Referencia",
     "Consentimiento informado verbal": "CONS1",
+    "Toma de consentimiento...": "CONS1",
     # --- Insumos entregados (plantilla nueva) ---
     "Insumos Entregados": "Resultados_Lab_Insumos",
     "Insumos entregados": "Resultados_Lab_Insumos",
+    "Insumos Entregados (Categoría general)": "Resultados_Lab_Insumos",
     # --- Asesoría en módulos ---
     "¿Se le ha brindado asesoría en uno de los módulos el día de hoy?": "ASESPREV",
+    "¿Se le ha brindado asesoría...?": "ASESPREV",
+    "Asesoría previa hoy?": "ASESPREV",
     "Asesoría en módulos": "ASESPREV",
     "Asesoria en modulos": "ASESPREV",
     # --- Pertenece a minoría étnica ---
     "¿Pertenece a alguna minoría étnica?": "_Pertenece_a_alguna_minor_a_t",
     "Pertenece a alguna minoría étnica": "_Pertenece_a_alguna_minor_a_t",
     "Minoria etnica": "_Pertenece_a_alguna_minor_a_t",
+    "Minoría étnica?": "_Pertenece_a_alguna_minor_a_t",
+    "Especificar Minoría Étnica": "Especificar_Minor_a_tnica",
+    "Etnia": "_Pertenece_a_alguna_minor_a_t",
     # --- Lugar de Atención por estado (plantilla con columnas separadas por estado) ---
     # Solo una tendrá valor por fila (la del estado correspondiente al paciente)
     "Lugar de Atención: Sonora": "Lugar",
     "Lugar de atención: Sonora": "Lugar",
+    "Lugar Sonora": "Lugar",
     "Lugar de Atención: Nuevo León": "Lugar",
     "Lugar de atención: Nuevo León": "Lugar",
     "Lugar de Atención: Nuevo Leon": "Lugar",
     "Lugar de atención: Nuevo Leon": "Lugar",
+    "Lugar Nuevo León": "Lugar",
+    "Lugar NL": "Lugar",
     "Lugar de Atención: Chihuahua": "Lugar",
     "Lugar de atención: Chihuahua": "Lugar",
+    "Lugar Chihuahua": "Lugar",
     "Lugar de Atención: Otro": "Lugar",
     "Lugar de atención: Otro": "Lugar",
+    "Lugar Otro": "Lugar",
+    "Otro:": "Lugar",
+    "Otro": "Lugar",
+    "Otro.1": "Lugar",
     "Lugar de Atención: Baja California": "Lugar",
     "Lugar de atención: Baja California": "Lugar",
+    "Lugar B.C.": "Lugar",
+    "B.C.": "Lugar",
     "Lugar de Atención: Baja California Sur": "Lugar",
     "Lugar de atención: Baja California Sur": "Lugar",
+    "Lugar de atención: BCS": "Lugar",
+    "Lugar B.C.S.": "Lugar",
+    "B.C.S.": "Lugar",
+    "Sonora": "Lugar",
+    "Chihuahua": "Lugar",
     # --- Embarazo / Lactancia ---
     "¿Mujer embarazada o en periodo de lactancia?": "ME_ML",
     "Mujer embarazada o en periodo de lactancia": "ME_ML",
     "Embarazada o lactancia": "ME_ML",
     "Embarazo/Lactancia": "ME_ML",
     "Embarazo / Lactancia": "ME_ML",
+    "Embarazada/Lactancia?": "ME_ML",
+    "¿Mujer embarazada o en lactancia?": "ME_ML",
     "Embarazo": "ME_ML",
     "ME_ML": "ME_ML",
     # --- Estado del paciente (diferente de Estado_brigada que es el lugar de la brigada) ---
@@ -169,36 +256,64 @@ EXCEL_TO_INTERNAL = {
     "Estado del paciente": "Estado_paciente",
     "Estado_paciente": "Estado_paciente",
     "Estado (paciente)": "Estado_paciente",
+    "Estado Civil/Nacimiento": "Estado_paciente",
     "Estado.1": "Estado_paciente",   # pandas renombra la 2ª columna "Estado" → "Estado.1"
+    "Originario (País)": "NAT",
     # --- Tratamiento ---
     "Tratamiento": "Tratamiento",
     "Tratamiento (Si Oftalmología brinda lentes especificar graduación de ojo derecho/izquierdo.)": "Tratamiento",
     "Tratamiento (Si Oftalmología brinda lentes especificar graduación de ojo derecho/izquierdo)": "Tratamiento",
     "Tx": "Tratamiento",
     "TX": "Tratamiento",
+    "Tratamiento indicado": "Tratamiento",
+    "Medicamentos": "Tratamiento",
+    "Medicamentos (Nombres específicos)": "Tratamiento",
+    "Medicamentos / Procedimiento": "Tratamiento",
     # --- Plan de tratamiento (texto libre en Kobo) ---
     "Plan de Tratamiento": "Plan_de_Tratamiento",
     "Plan de tratamiento": "Plan_de_Tratamiento",
+    "Plan de Tratamiento (Fisioterapia u otros)": "Plan_de_Tratamiento",
     "Plan_de_Tratamiento": "Plan_de_Tratamiento",
     # --- Diagnóstico fisioterapia (se concatena al plan de tratamiento) ---
     "Diagnostico Fisioterapia": "Plan_de_Tratamiento",
     "Diagnóstico Fisioterapia": "Plan_de_Tratamiento",
     "Diagnóstico fisioterapia": "Plan_de_Tratamiento",
+    "Diagnostico Fisio": "Plan_de_Tratamiento",
+    "Diag. Fisio": "Plan_de_Tratamiento",
+    "Plan Fisio": "Plan_de_Tratamiento",
+    "Fisio": "esp_fisioterapia",
     # --- Procedimiento odontológico (nueva columna) ---
     "¿Que procedimiento se realiza?":         "Procedimiento_dental",
     "¿Qué procedimiento se realiza?":         "Procedimiento_dental",
     "Que procedimiento se realiza":           "Procedimiento_dental",
     "Qué procedimiento se realiza":           "Procedimiento_dental",
+    "Que procedimiento":                      "Procedimiento_dental",
+    "Qué procedimiento":                     "Procedimiento_dental",
     "Procedimiento dental":                   "Procedimiento_dental",
     "Procedimiento":                          "Procedimiento_dental",
     "Procedimiento_dental":                   "Procedimiento_dental",
+    "¿Se realiza procedimiento odontológico? (ej. Limpieza, Extracción, Resina)": "Procedimiento_dental",
+    "¿Se realiza procedimiento odontológico?": "Procedimiento_dental",
+    "¿Se realiza proc. odonto.?":             "Procedimiento_dental",
+    "Odonto":                                 "Procedimiento_dental",
     # --- Unidades entregadas (se añade al campo de insumos) ---
     "Unidades_entregadas": "Unidades_entregadas",
     "Unidades entregadas": "Unidades_entregadas",
+    "Unidades": "Unidades_entregadas",
+    "Unid.": "Unidades_entregadas",
+    "Unidades_entregadas (Cantidad en número)": "Unidades_entregadas",
     # --- Especificar qué se entrega (complemento de insumos) ---
     "Especifique_qu_se_entrega": "Especifique_qu_se_entrega",
     "Especifique qu se entrega": "Especifique_qu_se_entrega",
     "Especifique qué se entrega": "Especifique_qu_se_entrega",
+    "Especifique qué se entrega (detalle del insumo)": "Especifique_qu_se_entrega",
+    "Especifique que se entrega (detalle del insumo)": "Especifique_qu_se_entrega",
+    "Especifique_qué_se_entrega (Detalle del insumo)": "Especifique_qu_se_entrega",
+    "Especifique_qué_se_entrega": "Especifique_qu_se_entrega",
+    "Especifique": "Especifique_qu_se_entrega",
+    "Especificar lo que se entrega al beneficiario": "Especificar_lo_que_se_entrega_",
+    "Especificar lo que se entrega": "Especificar_lo_que_se_entrega_",
+    "Especificar_lo_que_se_entrega_": "Especificar_lo_que_se_entrega_",
     # --- ¿Requiere anteojos? ---
     "¿Requiere anteojos?": "_Requiere_anteojos",
     "Requiere anteojos": "_Requiere_anteojos",
@@ -213,6 +328,14 @@ EXCEL_TO_INTERNAL = {
     "Tipo discapacidad": "Discapacidad",
     "Indicar si el paciente tiene alguna de las siguientes discapacidades": "Discapacidad",
     "Indicar discapacidad": "Discapacidad",
+    "Indicar si el paciente tiene alguna discapacidad": "Discapacidad",
+    "Indicar si el paciente tiene discapacidad": "Discapacidad",
+    # Subcolumnas export Kobo (0/1) — KoboUp/server.py también mapea por «…/Motriz» etc.
+    "Indicar si el paciente tiene alguna de las siguientes discapacidades/Motriz": "DIS_motriz",
+    "Indicar si el paciente tiene alguna de las siguientes discapacidades/Visual": "DIS_visual",
+    "Indicar si el paciente tiene alguna de las siguientes discapacidades/Auditiva": "DIS_auditiva",
+    "Indicar si el paciente tiene alguna de las siguientes discapacidades/Intelectual": "DIS_intelectual",
+    "Indicar si el paciente tiene alguna de las siguientes discapacidades/Otra": "DIS_otra",
     "Latitud": "lat",
     "Longitud": "long",
     "Altitud (m)": "alt",
@@ -239,6 +362,8 @@ EXCEL_TO_INTERNAL = {
     "LABORATORIO CLÍNICO": "esp_laboratorio",
     "LABORATORIO CLINICO": "esp_laboratorio",
     "LABORATORIO": "esp_laboratorio",
+    "LAB": "esp_laboratorio",
+    u"LABORATORIO CL\u00cdNICO (Formato: \u201cGlucosa: X, Colesterol: X, Triglic\u00e9ridos: X, HDL: X\u201d)": "esp_laboratorio",
     "Laboratorio Clínico": "esp_laboratorio",
     "Laboratorio Clinico": "esp_laboratorio",
     "Laboratorio": "esp_laboratorio",
@@ -246,7 +371,9 @@ EXCEL_TO_INTERNAL = {
     "LABORATORIOS": "esp_laboratorio",
 }
 # Claves que pueden venir de la plantilla y deben mostrarse en la tabla (unión con OUTPUT_COLUMNS)
-OUTPUT_COLUMNS_EXTRA = ["NAT", "lat", "long", "alt", "acc", "Unidades_entregadas", "Especifique_qu_se_entrega"]
+OUTPUT_COLUMNS_EXTRA = [
+    "NAT", "NATOT", "lat", "long", "alt", "acc", "Unidades_entregadas", "Especifique_qu_se_entrega"
+]
 
 # Orden de columnas en la salida (para consistencia)
 OUTPUT_COLUMNS = [
@@ -257,6 +384,8 @@ OUTPUT_COLUMNS = [
     "DOB",
     "Estado_brigada",
     "Lugar",
+    "Modalidad_de_la_atenci_n",
+    "SCH",
     "Servicio_que_se_brinda",
     "Diagnostico_Motivo",
     "HEI",
@@ -372,7 +501,16 @@ def load_source_dataframe(path: Path, sheet_name: int | str = 0) -> pd.DataFrame
         if last_err:
             raise last_err
         raise ValueError("No se pudo decodificar el CSV")
-    return pd.read_excel(path, sheet_name=sheet_name, dtype=str, engine="openpyxl")
+    df = pd.read_excel(path, sheet_name=sheet_name, dtype=str, engine="openpyxl")
+    # Detectar archivos donde el contenido es CSV con ; empaquetado en una sola columna
+    first_col = str(df.columns[0]) if len(df.columns) > 0 else ""
+    if first_col.count(";") >= 5 and len(first_col) > 100:
+        import io
+        data_lines = [str(row.iloc[0]) for _, row in df.iterrows() if pd.notna(row.iloc[0])]
+        csv_text = first_col + "\n" + "\n".join(data_lines)
+        csv_text = _fix_mojibake(csv_text)
+        df = pd.read_csv(io.StringIO(csv_text), dtype=str, sep=";", engine="python")
+    return df
 
 
 def load_excel_to_records(
@@ -398,12 +536,19 @@ def load_excel_to_records(
     for _, row in df.iterrows():
         rec = {col: "" for col in all_columns}
 
+        _ND = {"n/d", "nd", "na", "n/a", "no disponible", "no aplica"}
+
         for excel_col, value in row.items():
             value = "" if pd.isna(value) else str(value).strip()
+            if value.lower() in _ND:
+                value = ""
             col_stripped = str(excel_col).strip()
             # Plantilla usa encabezados con * (ej. "Fecha de atención*"); buscar con y sin *
-            internal = EXCEL_TO_INTERNAL.get(col_stripped) or EXCEL_TO_INTERNAL.get(
-                _normalize_excel_column_name(col_stripped)
+            internal = (
+                EXCEL_TO_INTERNAL.get(col_stripped)
+                or EXCEL_TO_INTERNAL.get(_normalize_excel_column_name(col_stripped))
+                or EXCEL_TO_INTERNAL.get(_strip_parenthetical(col_stripped))
+                or EXCEL_TO_INTERNAL.get(_strip_parenthetical(_normalize_excel_column_name(col_stripped)))
             )
             if internal is None and col_stripped in INTERNAL_COLUMNS:
                 internal = col_stripped
@@ -426,8 +571,9 @@ def load_excel_to_records(
                 elif value and rec.get("Servicio_que_se_brinda") == "":
                     rec["Servicio_que_se_brinda"] = value
             elif internal == "Diagnostico_Motivo":
-                if value:  # no sobreescribir con vacío (ej. columna "Diagnósticos" NaN borra "Padecimiento médico actual")
-                    rec["Diagnostico_Motivo"] = value
+                if value:
+                    if not rec.get("Diagnostico_Motivo"):
+                        rec["Diagnostico_Motivo"] = value
             elif internal == "Talla_Peso_raw":
                 hei, wei = _split_talla_peso(value)
                 rec["HEI"] = hei
@@ -467,6 +613,8 @@ def load_excel_to_records(
                 rec["_Pertenece_a_alguna_minor_a_t"] = _normalize_si_no(value) or value
             elif internal == "Modalidad_de_la_atenci_n":
                 rec["Modalidad_de_la_atenci_n"] = _normalize_modalidad(value) or value
+            elif internal == "SCH":
+                rec["SCH"] = value
             elif internal == "ME_ML":
                 rec["ME_ML"] = value
             elif internal == "Discapacidad":
@@ -511,18 +659,37 @@ def load_excel_to_records(
 
 VALID_SEX_VALUES = {"F", "H", "M", "FEMENINO", "MASCULINO", "FEMALE", "MALE"}
 VALID_FOLLOWUP_VALUES = {"primera vez", "seguimiento", "atención única", "atencion unica", "entrega de insumos", "1", "2", "3", "4"}
-VALID_SERVICES = {"medicina general", "dental", "fisioterapia", "oftalmología", "oftalmologia", "laboratorios"}
+VALID_SERVICES = {"medicina general", "dental", "odontología", "odontologia", "fisioterapia", "oftalmología", "oftalmologia", "laboratorios"}
+
+
+_FIELD_LABELS = {
+    "NAME": "Nombre",
+    "Fecha_de_atenci_n": "Fecha atención",
+    "SEX": "Sexo",
+    "Servicio_que_se_brinda": "Servicio",
+    "AGE": "Edad",
+    "DOB": "Fecha nacimiento",
+    "Estado_brigada": "Estado brigada",
+    "Lugar": "Lugar",
+    "Diagnostico_Motivo": "Padecimiento/Motivo",
+    "HEI": "Talla (cm)",
+    "WEI": "Peso (kg)",
+    "HPI": "Padecimiento",
+    "Resultados_Lab_Insumos": "Insumos Entregados",
+    "entrega_tx": "¿Entrega Tx?",
+    "Referencia": "¿Ref?",
+    "CGR": "Acompañante",
+    "followup": "Primera vez/Seguimiento",
+}
+
+
+def _label(field: str) -> str:
+    return _FIELD_LABELS.get(field, field)
 
 
 def validate_records(records: list[dict[str, str]]) -> dict:
     """
     Valida registros contra los requisitos del formulario.
-
-    Comprueba:
-    - Campos obligatorios vacíos (NAME, Fecha_de_atenci_n, SEX, Servicio_que_se_brinda)
-    - Valores inválidos (SEX fuera de F/H, Servicio no reconocido)
-    - Filas duplicadas por combinación NAME + Fecha_de_atenci_n
-    - Campos recomendados vacíos (AGE, Estado_brigada, Lugar, etc.)
 
     Retorna: { valid: int, with_warnings: int, errors: [...], warnings: [...], duplicates: [...] }
     """
@@ -534,7 +701,6 @@ def validate_records(records: list[dict[str, str]]) -> dict:
     valid = 0
     with_warnings = 0
 
-    # Detectar duplicados por NAME + Fecha_de_atenci_n
     seen_keys: dict[tuple, list[int]] = {}
     for i, rec in enumerate(records):
         key = (
@@ -551,33 +717,33 @@ def validate_records(records: list[dict[str, str]]) -> dict:
                 "filas": rows,
             })
 
+    _ND_VALUES = {"n/d", "nd", "na", "n/a", "no disponible", "no aplica", ""}
+
+    def _is_empty(val: str) -> bool:
+        return not val or val.lower() in _ND_VALUES
+
     for i, rec in enumerate(records):
         row = i + 1
         row_errors = []
         row_warnings = []
 
-        # Campos obligatorios vacíos
-        missing_req = [f for f in required if not str(rec.get(f, "")).strip()]
+        missing_req = [f for f in required if _is_empty(str(rec.get(f, "")).strip())]
         if missing_req:
-            row_errors.append(f"Faltan campos obligatorios: {', '.join(missing_req)}")
+            row_errors.append(f"Faltan campos obligatorios: {', '.join(_label(f) for f in missing_req)}")
 
-        # Validar valores de SEX
         sex_val = str(rec.get("SEX", "")).strip().upper()
         if sex_val and sex_val not in VALID_SEX_VALUES:
-            row_warnings.append(f"SEX '{sex_val}' no reconocido (usa F o H)")
+            row_warnings.append(f"Sexo '{sex_val}' no reconocido (usa F o H)")
 
-        # Validar Servicio_que_se_brinda
         svc_val = str(rec.get("Servicio_que_se_brinda", "")).strip().lower()
         if svc_val and svc_val not in VALID_SERVICES:
-            row_warnings.append(f"Servicio '{svc_val}' no está en la lista estándar")
+            row_warnings.append(f"Servicio '{svc_val}' se cargará como 'Medicina General'")
 
-        # Validar formato de fecha (YYYY-MM-DD)
         fecha_val = str(rec.get("Fecha_de_atenci_n", "")).strip()
-        if fecha_val and not re.match(r"^\d{4}-\d{2}-\d{2}$", fecha_val):
-            row_warnings.append(f"Fecha '{fecha_val}' no está en formato YYYY-MM-DD")
+        if fecha_val and not _is_empty(fecha_val) and not re.match(r"^\d{4}-\d{2}-\d{2}$", fecha_val):
+            row_warnings.append(f"Fecha atención '{fecha_val}' no está en formato YYYY-MM-DD")
 
-        # Campos recomendados vacíos
-        missing_rec = [f for f in recommended if not str(rec.get(f, "")).strip()]
+        missing_rec = [f for f in recommended if _is_empty(str(rec.get(f, "")).strip())]
 
         if row_errors:
             errors.append({"fila": row, "mensaje": "; ".join(row_errors)})
@@ -588,7 +754,8 @@ def validate_records(records: list[dict[str, str]]) -> dict:
             with_warnings += 1
             warn_parts = row_warnings[:]
             if missing_rec:
-                warn_parts.append(f"Sin: {', '.join(missing_rec[:3])}{'...' if len(missing_rec) > 3 else ''}")
+                labels = [_label(f) for f in missing_rec[:3]]
+                warn_parts.append(f"Sin: {', '.join(labels)}{'...' if len(missing_rec) > 3 else ''}")
             if len(warnings) < 30:
                 warnings.append({"fila": row, "mensaje": "; ".join(warn_parts)})
 
