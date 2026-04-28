@@ -26,7 +26,10 @@ try:
 except Exception:  # noqa: BLE001
     load_dotenv = None
 
+from paths_config import PRIORITY_VALIDATED_DIR
+
 from file_store import (
+    DEMO_REGISTERED_NAME,
     EDIT_LOCK_TTL_SECONDS,
     PENDING_DIR,
     REFERENCES_DIR,
@@ -38,6 +41,7 @@ from file_store import (
     count_file_rows,
     delete_file_record,
     delete_ref_record,
+    ensure_demo_excel_registered_for_ui,
     ensure_validated_location,
     get_file_path,
     get_file_record,
@@ -140,6 +144,16 @@ KOBO_VISIBLE_COLUMNS = [
         "options": ["Medicina General", "Dental", "Fisioterapia", "Oftalmología", "Laboratorios"],
     },
     {"label": "Edad", "required": False, "aliases": ["Edad", "AGE"], "hint": "Edad en años."},
+    {
+        "label": "Edad en meses",
+        "internal": "AGEMO",
+        "required": False,
+        "aliases": ["Edad en meses", "AGEMO", "Edad meses"],
+        "hint": (
+            "Catálogo Kobo: meses completos cuando «Edad» = 0 (menor de 1 año). "
+            "Ejemplo: 1 año y 2 meses → 14. Deje vacío si el paciente tiene 1 año o más."
+        ),
+    },
     {"label": "Fecha de nacimiento", "required": False, "aliases": ["Fecha de nacimiento", "DOB", "Fecha nacimiento"], "hint": "Formato AAAA-MM-DD."},
     {
         "label": "Estado",
@@ -187,6 +201,22 @@ KOBO_VISIBLE_COLUMNS = [
         ],
     },
     {
+        "label": "Especificar lugar de atención (Otro)",
+        "internal": "OTH",
+        "required": False,
+        "aliases": [
+            "Especificar lugar de atención (Otro)",
+            "Especificar Lugar de Atención",
+            "Especificar lugar de atención",
+            "OTH",
+            "PLACE",
+        ],
+        "hint": (
+            "Visible cuando «Lugar de atención» = Otro (o el lugar no está en la lista del estado). "
+            "Texto libre: comunidad, dirección o nombre del sitio que no encaja en las opciones del formulario."
+        ),
+    },
+    {
         "label": "Modalidad",
         "required": False,
         "aliases": ["Modalidad", "Modalidad de la atención", "Modalidad_de_la_atenci_n", "Modalidad de atención"],
@@ -222,11 +252,14 @@ KOBO_VISIBLE_COLUMNS = [
         "internal": "NATOT",
         "required": False,
         "aliases": [
-            "Especificar",
+            # NO incluir sólo «Especificar»: en export/import hay varias columnas con ese título genérico
+            # (nacionalidad, dx MG, fisio, odonto). Usar estos textos claros para NATOT/detal país.
             "NATOT",
             "Nacionalidad (especificar)",
+            "Especificar nacionalidad",
+            "Especificar detalle nacionalidad",
         ],
-        "hint": "En Kobo, junto a Nacionalidad el campo de texto se llama «Especificar»; es el detalle (NATOT), no el de diagnóstico de medicina. Recomendable solo si la nacionalidad no es una opción estándar; si no, vacío.",
+        "hint": "Detalle de nacionalidad (NATOT) solo si Nacionalidad ≠ opción lista. Para columnas llamadas sólo «Especificar», use el texto explícito de plantilla export o la fila nacionalidad de Acumulado; no usar la columna genérica suelta de otros bloques.",
     },
     {
         "label": "Estatus migratorio",
@@ -256,9 +289,61 @@ KOBO_VISIBLE_COLUMNS = [
         ],
         "options": ["Sí", "No"],
     },
+    {
+        "label": "Especificar minoría étnica",
+        "internal": "Especificar_Minor_a_tnica",
+        "required": False,
+        "aliases": [
+            "Especificar minoría étnica",
+            "Especificar Minoría Étnica",
+            "Especificar_Minor_a_tnica",
+        ],
+        "hint": (
+            "Catálogo: texto libre. Obligatorio en Kobo si «Minoría» = Sí. "
+            "Indique el grupo o pueblo indígena / minoría según el formulario."
+        ),
+    },
     {"label": "Talla (cm)", "required": False, "aliases": ["Talla (cm)", "HEI"]},
     {"label": "Peso (kg)", "required": False, "aliases": ["Peso (kg)", "WEI"]},
-    {"label": "Padecimiento médico actual", "required": False, "aliases": ["Padecimiento médico actual", "Padecimiento medico actual", "Diagnostico_Motivo", "DX"]},
+    {
+        "label": "IMC",
+        "internal": "IMC",
+        "required": False,
+        "aliases": ["IMC", "Índice de masa corporal"],
+        "hint": (
+            "Catálogo Kobo: número (ej. 24.5). Suele calcularse con talla y peso; puede dejarse vacío si no aplica."
+        ),
+    },
+    {
+        "label": "Peso pre gestacional (kg)",
+        "internal": "Pesoprepreg",
+        "required": False,
+        "aliases": ["Peso pre gestacional (kg)", "Peso pre gestacional", "Pesoprepreg"],
+        "hint": (
+            "Visible cuando «¿Mujer embarazada o en periodo de lactancia?» = Embarazada. "
+            "Peso antes del embarazo en kg; deje vacío si no aplica."
+        ),
+    },
+    {
+        "label": "Semanas de gestación",
+        "internal": "SDG",
+        "required": False,
+        "aliases": ["Semanas de gestación", "SDG", "Semanas gestación"],
+        "hint": (
+            "Visible cuando «¿Mujer embarazada o en periodo de lactancia?» = Embarazada. "
+            "Número entero de semanas; deje vacío si no aplica."
+        ),
+    },
+    {
+        "label": "Padecimiento médico actual",
+        "internal": "HPI",
+        "required": False,
+        "aliases": [
+            "Padecimiento médico actual",
+            "Padecimiento medico actual",
+        ],
+        "hint": "Motivo / contexto de la consulta (Kobo: group_jt9yr10/HPI). No confundir con Diagnósticos de medicina general (DX).",
+    },
     {"label": "Entrega Tratamiento", "required": False, "aliases": ["Entrega Tratamiento", "¿Entrega Tratamiento?", "entrega_tx"], "options": ["Sí", "No"]},
     {
         "label": "Tratamiento",
@@ -282,6 +367,22 @@ KOBO_VISIBLE_COLUMNS = [
         "options": ["Clínica", "Segundo Nivel", "Hospital", "Laboratorio", "ONG", "Ministerio público", "Otro"],
     },
     {
+        "label": "Nombre o detalle del destino (referencia)",
+        "internal": "REFSPEC",
+        "required": False,
+        "aliases": [
+            "Nombre o detalle del destino (referencia)",
+            "Especificar (destino de referencia)",
+            "Nombre de Clínica, ONG, Especialidad u Otro",
+            "Referencia_especificar",
+            "REFSPEC",
+            "Destino referencia",
+        ],
+        "hint": (
+            "Visible cuando «Se hizo referencia» = Sí. Nombre de clínica, ONG, especialidad u otro destino (texto libre; Kobo: REFSPEC)."
+        ),
+    },
+    {
         "label": "Motivo Ref",
         "internal": "Motivo_referencia",
         "required": False,
@@ -298,7 +399,10 @@ KOBO_VISIBLE_COLUMNS = [
             "Especificar m. ref. fisio",
             "Motivo_especificar",
         ],
-        "hint": "Detalle obligatorio en fisioterapia si hay referencia y «Motivo Ref» = «Otro» (Kobo: SPREFMOTMED).",
+        "hint": (
+            "Obligatorio cuando «Se hizo referencia» = Sí y «Motivo Ref» = «Otro». Texto libre del motivo médico de referencia (Kobo: SPREFMOTMED). "
+            "Aplica a todos los servicios, no solo fisioterapia."
+        ),
     },
     {"label": "Acompañante", "required": False, "aliases": ["Acompañante", "Acompanante", "CGR"]},
     {
@@ -310,6 +414,16 @@ KOBO_VISIBLE_COLUMNS = [
             "Tipo de discapacidad",
         ],
         "options": ["Motriz", "Visual", "Auditiva", "Intelectual", "Otra"],
+    },
+    {
+        "label": "Especificar discapacidad",
+        "internal": "Especificar_discapacidad",
+        "required": False,
+        "aliases": ["Especificar discapacidad", "Especificar_discapacidad"],
+        "hint": (
+            "Catálogo: texto libre. Solo medicina general. Obligatorio si en «Indicar si el paciente tiene alguna de las siguientes discapacidades» "
+            "incluye «Otra»."
+        ),
     },
     {
         "label": "¿Mujer embarazada o en periodo de lactancia?",
@@ -355,6 +469,60 @@ KOBO_VISIBLE_COLUMNS = [
         "hint": "Texto o lista de diagnósticos; KoboUp convierte a 0/1 en columnas Diagnóstico/... en la API. Export: Diagnóstico/Revisión, …/Dolor, …/Especificar.",
     },
     {
+        "label": "Especificar diagnóstico (Fisioterapia)",
+        "internal": "Especificar",
+        "required": False,
+        "aliases": [
+            "Especificar diagnóstico (Fisioterapia)",
+            "Especificar (fisioterapia)",
+            "Especificar",
+        ],
+        "hint": (
+            "Catálogo: texto libre. Visible cuando el diagnóstico de fisioterapia incluye «Otro». "
+            "Describe el diagnóstico no listado (XML Kobo: group_mi31k30/Especificar)."
+        ),
+    },
+    {
+        "label": "Localización de la lesión",
+        "internal": "Localizaci_n_de_la_lesi_n",
+        "required": False,
+        "aliases": [
+            "Localización de la lesión",
+            "Localizacion de la lesion",
+            "Localizaci_n_de_la_lesi_n",
+        ],
+        "options": [
+            "Cabeza",
+            "Cuello",
+            "Tórax",
+            "Abdomen",
+            "Cadera",
+            "Miembro superior izquierdo",
+            "Miembro superior derecho",
+            "Miembro inferior izquierdo",
+            "Miembro inferior derecho",
+            "Espalda",
+            "Otro",
+        ],
+        "hint": (
+            "Solo fisioterapia. Opciones del formulario PDF. Si hay varias regiones, use la principal o la indicada en Kobo; "
+            "detalle adicional en la columna siguiente si localización = Otro."
+        ),
+    },
+    {
+        "label": "Especificar localización de la lesión",
+        "internal": "Especificar_001",
+        "required": False,
+        "aliases": [
+            "Especificar localización de la lesión",
+            "Especificar localización",
+            "Especificar_001",
+        ],
+        "hint": (
+            "Texto libre cuando «Localización de la lesión» = Otro o se requiere precisar (p. ej. región no listada)."
+        ),
+    },
+    {
         "label": "Plan de Tratamiento",
         "internal": "Plan_de_Tratamiento",
         "required": False,
@@ -370,6 +538,7 @@ KOBO_VISIBLE_COLUMNS = [
     },
     {
         "label": "Diagnóstico Medicina General",
+        "internal": "Diagnostico_Motivo",
         "required": False,
         "aliases": [
             "Diagnóstico Medicina General",
@@ -378,6 +547,8 @@ KOBO_VISIBLE_COLUMNS = [
             "Diagnosticos Medicina General",
             "Diagnósticos",
             "Diagnosticos",
+            "Diagnostico_Motivo",
+            "DX",
         ],
         "options": [
             "Ninguno seleccionado",
@@ -439,7 +610,7 @@ KOBO_VISIBLE_COLUMNS = [
             "Especificar Diagnostico Medicina General",
             "dxesp",
         ],
-        "hint": "Campo Kobo «dxesp» en bloque de medicina: texto cuando en diagnósticos se incluye «Otro». No es el «Especificar» de nacionalidad (NATOT) ni el de fisioterapia.",
+        "hint": "Equivalente funcional del XML Kobo campo «dxesp». Plantilla física/export parcial suele llevar etiqueta «Especificar diagnóstico (Medicina General)». En export tipo Acumulado/API la primera columna que sólo dice «Especificar» después del bloque Diagnósticos es la misma celda (internamente Especificar_bare→dxesp cuando el servicio es Medicina general). No confundir con NATOT ni con «Especificar» de fisio/odonto.",
     },
     {
         "label": "Diagnóstico Odontología",
@@ -461,6 +632,20 @@ KOBO_VISIBLE_COLUMNS = [
             "Fractura",
             "Otro",
         ],
+    },
+    {
+        "label": "Especificar diagnóstico (Odontología)",
+        "internal": "Especificar_002",
+        "required": False,
+        "aliases": [
+            "Especificar diagnóstico (Odontología)",
+            "Especificar diagnostico (Odontologia)",
+            "Especificar_002",
+        ],
+        "hint": (
+            "Catálogo: texto libre. Visible cuando «Diagnóstico Odontología» = Otro. "
+            "Detalle del diagnóstico dental no listado."
+        ),
     },
     {
         "label": "¿Se realiza procedimiento odontológico?",
@@ -495,6 +680,19 @@ KOBO_VISIBLE_COLUMNS = [
         "hint": "Opciones del formulario Kobo (puede haber varias). Si usa Otro, detalle según las notas del formulario.",
     },
     {
+        "label": "Especificar procedimiento odontológico",
+        "internal": "Especificar_003",
+        "required": False,
+        "aliases": [
+            "Especificar procedimiento odontológico",
+            "Especificar procedimiento odontologico",
+            "Especificar_003",
+        ],
+        "hint": (
+            "Catálogo: texto libre. Visible cuando «Qué procedimiento se realiza» incluye «Otro» y el procedimiento es odontológico."
+        ),
+    },
+    {
         "label": "Síntomas que presenta a la fecha de consulta",
         "required": False,
         "aliases": [
@@ -515,6 +713,21 @@ KOBO_VISIBLE_COLUMNS = [
         ],
     },
     {
+        "label": "Especifique síntoma (oftalmología)",
+        "internal": "Especifique_s_ntoma",
+        "required": False,
+        "aliases": [
+            "Especifique síntoma (oftalmología)",
+            "Especifique sintoma (oftalmologia)",
+            "Especifique síntoma",
+            "Especifique_s_ntoma",
+        ],
+        "hint": (
+            "Catálogo: texto libre. Visible cuando «Síntomas que presenta…» incluye «Otro». "
+            "Describa el síntoma no listado."
+        ),
+    },
+    {
         "label": "¿Ha recibido algún diagnóstico previo?",
         "required": False,
         "aliases": [
@@ -525,10 +738,55 @@ KOBO_VISIBLE_COLUMNS = [
         "options": ["Ninguno", "Catarata", "Glaucoma", "Estrabismo", "Retinopatía", "Pterigión", "Otro"],
     },
     {
+        "label": "Especifique diagnóstico previo (oftalmología)",
+        "internal": "Especifique_diagn_stico_previo",
+        "required": False,
+        "aliases": [
+            "Especifique diagnóstico previo (oftalmología)",
+            "Especifique diagnostico previo (oftalmologia)",
+            "Especifique diagnóstico previo",
+            "Especifique_diagn_stico_previo",
+        ],
+        "hint": (
+            "Texto libre cuando «¿Ha recibido algún diagnóstico previo?» = Otro. "
+            "Detalle del diagnóstico previo no listado."
+        ),
+    },
+    {
         "label": "Diagnóstico Actual",
         "required": False,
         "aliases": ["Diagnóstico Actual", "Diagnostico Actual"],
         "options": ["Ametropía", "Miopía", "Astigmatismo", "Hipermetropía", "Estabismo", "Otro"],
+    },
+    {
+        "label": "Otro diagnóstico (oftalmología actual)",
+        "internal": "Otro_diagn_stico",
+        "required": False,
+        "aliases": [
+            "Otro diagnóstico (oftalmología actual)",
+            "Otro diagnóstico oftalmología",
+            "Otro diagnóstico",
+            "Otro_diagn_stico",
+        ],
+        "hint": (
+            "Texto libre cuando «Diagnóstico Actual» = Otro. "
+            "Nombre o descripción del diagnóstico oftalmológico actual no listado en el catálogo."
+        ),
+    },
+    {
+        "label": "¿Requiere anteojos?",
+        "internal": "_Requiere_anteojos",
+        "required": False,
+        "aliases": [
+            "¿Requiere anteojos?",
+            "Requiere anteojos",
+            "_Requiere_anteojos",
+        ],
+        "options": ["Si", "No"],
+        "hint": (
+            "Catálogo del formulario: Si / No (sin tilde en «Si» como en Kobo). "
+            "Solo oftalmología. Indica si el paciente requiere anteojos."
+        ),
     },
     {
         "label": "¿Se hizo entrega de tratamiento/artículos al beneficiario o beneficiaria?",
@@ -654,6 +912,26 @@ KOBO_VISIBLE_COLUMNS = [
     },
     {"label": "Latitud", "required": False, "aliases": ["Latitud", "LAT", "latitud"]},
     {"label": "Longitud", "required": False, "aliases": ["Longitud", "LON", "LNG", "longitud"]},
+    {
+        "label": "Altitud (m)",
+        "internal": "alt",
+        "required": False,
+        "aliases": ["Altitud (m)", "Altitud", "alt"],
+        "hint": (
+            "Metros sobre el nivel del mar; visible junto a coordenadas cuando captura GPS completo. "
+            "Puede dejarse 0 si no dispone del dato."
+        ),
+    },
+    {
+        "label": "Precisión (m)",
+        "internal": "acc",
+        "required": False,
+        "aliases": ["Precisión (m)", "Precision (m)", "Precisión", "acc"],
+        "hint": (
+            "Incertidumbre horizontal del GPS en metros (como en el formulario Kobo). "
+            "Visible cuando se registran latitud y longitud."
+        ),
+    },
 ]
 
 ALWAYS_REQUIRED_SHEET_COLUMNS = [
@@ -670,29 +948,52 @@ SERVICE_CONDITIONAL_COLUMNS: dict[str, list[str]] = {
     "Medicina General": [
         "Padecimiento médico actual",
         "Indicar si el paciente tiene alguna de las siguientes discapacidades",
+        "Especificar discapacidad",
         "Diagnóstico Medicina General",
         "Especificar diagnóstico (Medicina General)",
     ],
     "Dental": [
         "Diagnóstico Odontología",
+        "Especificar diagnóstico (Odontología)",
         "¿Se realiza procedimiento odontológico?",
         "Qué procedimiento se realiza",
+        "Especificar procedimiento odontológico",
     ],
     "Fisioterapia": [
         "Fisioterapia",
+        "Especificar diagnóstico (Fisioterapia)",
+        "Localización de la lesión",
+        "Especificar localización de la lesión",
         "Plan de Tratamiento",
     ],
     "Oftalmología": [
         "Síntomas que presenta a la fecha de consulta",
+        "Especifique síntoma (oftalmología)",
         "¿Ha recibido algún diagnóstico previo?",
+        "Especifique diagnóstico previo (oftalmología)",
         "Diagnóstico Actual",
-        "Requiere anteojos",
+        "Otro diagnóstico (oftalmología actual)",
+        "¿Requiere anteojos?",
     ],
     "Laboratorios": [
         "Laboratorio Clínico",
         "Diagnóstico / Resu",
     ],
 }
+
+# Columnas secundarias presentes en cualquier hoja (junto a su «columna principal» en la UI).
+KOBO_GLOBAL_SECONDARY_COLUMNS: list[str] = [
+    "Especificar minoría étnica",
+    "Especificar lugar de atención (Otro)",
+    "Edad en meses",
+    "IMC",
+    "Peso pre gestacional (kg)",
+    "Semanas de gestación",
+    "Altitud (m)",
+    "Precisión (m)",
+    "Nombre o detalle del destino (referencia)",
+    "Especificar (motivo referido)",
+]
 
 
 def _merge_kobo_schema_with_template(schema: list[dict]) -> tuple[list[dict], str]:
@@ -872,6 +1173,7 @@ KOBO_OPTIONS_OVERRIDE: dict[str, list[str]] = {
     "Modalidad": ["Albergues", "Centros Comunitarios", "Clínica Adventista", "Escuelas", "Móvil"],
     "Toma de consentimiento antes de iniciar la consulta": ["Sí", "No"],
     "¿Se tomó consentimiento informado de forma verbal?": ["Sí", "No"],
+    "Acompañante": ["Cuidador hombre", "Cuidadora mujer", "Ambos", "Ninguno"],
     "¿Se le ha brindado asesoría en uno de los módulos el día de hoy?": [
         "Medicina General",
         "Oftalmología",
@@ -887,6 +1189,7 @@ KOBO_OPTIONS_OVERRIDE: dict[str, list[str]] = {
         "Intelectual",
         "Otra",
     ],
+    "¿Requiere anteojos?": ["Si", "No"],
     "Fisioterapia": [
         "Artrosis",
         "Artritis",
@@ -906,9 +1209,6 @@ ROOT_UPLOADS_DIR = ROOT_PROJECT_DIR / "uploads"
 ROOT_LOGS_DIR = ROOT_PROJECT_DIR / "logs"
 ROOT_SUBMITTED_FILE = ROOT_LOGS_DIR / "filas_enviadas.json"
 KPI_EXCLUSIONS_FILE = BASE_DIR / "logs" / "kpi_excluded_files.json"
-PRIORITY_VALIDATED_DIR = Path(
-    "/Users/luciodelacruz/Desktop/2026/Llenado Kobo tools.bak_20260320/archivos_validados_20260411_004650"
-)
 EXTRA_KPI_FILES = [
     ROOT_UPLOADS_DIR / "01_FERIA_DE_SALUD-_PLOMO_CD.JUAREZ.xlsx",
     ROOT_UPLOADS_DIR / "02_FERIA_DE_SALUD-_PLOMO_CD.JUAREZ.xlsx",
@@ -924,6 +1224,7 @@ ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv", "pdf"}
 MAX_UPLOAD_MB = 50
 
 init_files_db()
+ensure_demo_excel_registered_for_ui()
 
 
 def allowed_file(filename: str) -> bool:
@@ -1407,15 +1708,8 @@ def _build_simple_check(columns: list[str], rows: list[dict[str, str]]) -> dict:
             "Motivo_especificar",
         ],
     )
-    service_col_simple = _find_column_name_by_alias(
-        columns,
-        ["Servicio que se brinda", "Servicio", "Especialidad", "Servicio_que_se_brinda"],
-    )
-    if ref_col and motivo_ref_col and service_col_simple and motivo_esp_col:
+    if ref_col and motivo_ref_col and motivo_esp_col:
         for i, row in enumerate(rows):
-            raw_svc = str(row.get(service_col_simple, "") or "").strip()
-            if not raw_svc or _normalize_service(raw_svc) != "Fisioterapia":
-                continue
             ref_val2 = _normalize_header(str(row.get(ref_col, "") or ""))
             if ref_val2 not in {"si", "sí"}:
                 continue
@@ -1993,6 +2287,10 @@ def _to_kobo_internal_record(row: dict[str, str]) -> dict[str, str]:
         dint = _disability_subcolumn_key_to_internal(k)
         bint = _kobo_binary_subcolumn_to_internal(k)
         internal = KOBO_INTERNAL_ALIAS_TO_KEY.get(nk) or None
+        # Una sola columna titulada exactamente «Especificar» (plantilla física/export parcial): no debe
+        # mapearse a NATOT ni pasar como clave interna «Especificar» (fisio, mapping.yaml mi31k30).
+        if not internal and nk == "especificar" and re.fullmatch(r"(?i)Especificar\s*", k.strip()):
+            internal = "Especificar_bare"
         if not internal:
             if nk in {
                 "fisioterapia",
@@ -2003,7 +2301,12 @@ def _to_kobo_internal_record(row: dict[str, str]) -> dict[str, str]:
                 "diag fisi terapia",
             }:
                 internal = "Fisio_Diagnostico"
-            elif nk in {"diagnostico medicina general", "diagnosticos medicina general", "diagnostico odontologia"}:
+            elif nk in {
+                "diagnostico medicina general",
+                "diagnosticos medicina general",
+                "diagnosticos",
+                "diagnostico odontologia",
+            }:
                 internal = "Diagnostico_Motivo"
             elif nk in {
                 "plan de tratamiento",
@@ -2036,6 +2339,8 @@ def _to_kobo_internal_record(row: dict[str, str]) -> dict[str, str]:
                 internal = "Especificar_lo_que_se_entrega_"
             elif nk in {"unidades entregadas", "unidades_entregadas"}:
                 internal = "Unidades_entregadas"
+            elif nk in {"padecimiento medico actual", "hpi"}:
+                internal = "HPI"
             else:
                 if dint:
                     internal = dint
@@ -2356,26 +2661,36 @@ def _split_diag_tokens(raw: str) -> list[str]:
     return out if out else [text]
 
 
+def _find_mg_diagnosis_column_name(columns: list[str]) -> str:
+    """
+    Columna de lista de diagnósticos (Medicina General) en el archivo.
+    Prioriza títulos explícitos «…Medicina General» sobre «Diagnósticos» (nombre corto en
+    exportes Kobo) para no alinear otra hoja/variable por orden de aparición en la tabla.
+    """
+    for name in (
+        "Diagnóstico Medicina General",
+        "Diagnostico Medicina General",
+        "Diagnósticos Medicina General",
+        "Diagnosticos Medicina General",
+        "Diagnósticos",
+        "Diagnosticos",
+    ):
+        c = _find_column_name_by_alias(columns, [name])
+        if c:
+            return c
+    return ""
+
+
 def _normalize_diagnostico_mg_values(columns: list[str], rows: list[dict[str, str]]) -> tuple[list[str], list[dict[str, str]]]:
-    diag_col = _find_column_name_by_alias(
-        columns,
-        [
-            "Diagnóstico Medicina General",
-            "Diagnostico Medicina General",
-            "Diagnósticos Medicina General",
-            "Diagnosticos Medicina General",
-            "Diagnósticos",
-            "Diagnosticos",
-        ],
-    )
+    diag_col = _find_mg_diagnosis_column_name(columns)
     if not diag_col:
         return columns, rows
 
     options = _diagnostico_mg_options()
     if not options:
         return columns, rows
-    # No buscar el encabezado genérico «Especificar»: en Kobo es el texto de NATOT
-    # (nacionalidad), no el de diagnóstico (dxesp).
+    # No usar el «Especificar» genérico (varios nodos distintos en export). Buscamos la columna
+    # dxesp por alias explícitos; NATOT nacionalidad tiene rutas etiquetadas distintas.
     especificar_col = _find_column_name_by_alias(
         columns,
         [
@@ -2386,19 +2701,25 @@ def _normalize_diagnostico_mg_values(columns: list[str], rows: list[dict[str, st
             "dxesp",
         ],
     )
-    # Fuentes de respaldo: en varios archivos históricos el texto libre quedó en estas columnas.
-    fallback_diag_sources: list[str] = []
-    for alias in [
-        "Padecimiento médico actual",
-        "Padecimiento medico actual",
-        "Diagnósticos",
-        "Diagnosticos",
+    # Solo otras columnas de diagnóstico MG (mismo criterio de nombre); nunca
+    # «Padecimiento» (motivo de consulta / 'Chequeo general' ≠ diagnóstico cápita MG).
+    mg_names_order = (
         "Diagnóstico Medicina General",
         "Diagnostico Medicina General",
-    ]:
-        c = _find_column_name_by_alias(columns, [alias])
-        if c and c not in fallback_diag_sources and c != diag_col:
+        "Diagnósticos Medicina General",
+        "Diagnosticos Medicina General",
+        "Diagnósticos",
+        "Diagnosticos",
+    )
+    fallback_diag_sources: list[str] = []
+    for _mg in mg_names_order:
+        c = _find_column_name_by_alias(columns, [_mg])
+        if c and c != diag_col and c not in fallback_diag_sources:
             fallback_diag_sources.append(c)
+    service_col = _find_column_name_by_alias(
+        columns,
+        ["Servicio que se brinda", "Servicio", "Especialidad", "Servicio_que_se_brinda"],
+    )
     option_map = {_normalize_header(opt): opt for opt in options}
     non_otro_keys = [k for k in option_map.keys() if k not in {"otro", "otra"}]
     placeholder_diag_keys = {
@@ -2436,10 +2757,13 @@ def _normalize_diagnostico_mg_values(columns: list[str], rows: list[dict[str, st
         raw = str(nr.get(diag_col, "") or "").strip()
         raw_key = _normalize_header(raw)
         raw_for_parse = raw
+        row_svc = _normalize_service(str(nr.get(service_col) or "")) if service_col else "Medicina General"
+        is_dental = row_svc == "Dental"
 
         # Si viene vacío o en estado "placeholder" (ej. "Ninguno seleccionado"),
-        # intentar recuperar el diagnóstico real desde columnas históricas.
-        if not raw or raw_key in placeholder_diag_keys:
+        # comprobar otras columnas *solo* de la lista de diagnóstico MG, no «Padecimiento».
+        # En consulta solo odontológica, no rellenar el bloque de medicina general.
+        if (not is_dental) and (not raw or raw_key in placeholder_diag_keys):
             for src_col in fallback_diag_sources:
                 src_val = str(nr.get(src_col, "") or "").strip()
                 if not src_val or _value_looks_missing(src_val):
@@ -2450,9 +2774,8 @@ def _normalize_diagnostico_mg_values(columns: list[str], rows: list[dict[str, st
                 raw_for_parse = src_val
                 break
 
-        # Si la columna diagnóstica ya fue reducida a "Otro", intentar recuperar
-        # el detalle desde columnas históricas de diagnóstico para poblar "Especificar".
-        if raw_key in {"otro", "otra"}:
+        # Si la columna listó «Otro», rellenar el texto desde otras columna MG, no padecimiento.
+        if (not is_dental) and raw_key in {"otro", "otra"}:
             for src_col in fallback_diag_sources:
                 src_val = str(nr.get(src_col, "") or "").strip()
                 if not src_val or _value_looks_missing(src_val):
@@ -2530,17 +2853,7 @@ def _reorder_especificar_next_to_diagnostico_mg(columns: list[str]) -> list[str]
     """
     if not columns or len(columns) < 2:
         return columns
-    diag = _find_column_name_by_alias(
-        columns,
-        [
-            "Diagnóstico Medicina General",
-            "Diagnostico Medicina General",
-            "Diagnósticos Medicina General",
-            "Diagnosticos Medicina General",
-            "Diagnósticos",
-            "Diagnosticos",
-        ],
-    )
+    diag = _find_mg_diagnosis_column_name(columns)
     esp = _find_column_name_by_alias(
         columns,
         [
@@ -2622,6 +2935,7 @@ def _ensure_service_conditional_columns(columns: list[str], rows: list[dict[str,
     needed: list[str] = []
     for service in services:
         needed.extend(SERVICE_CONDITIONAL_COLUMNS.get(service, []))
+    needed.extend(KOBO_GLOBAL_SECONDARY_COLUMNS)
     if not needed:
         return columns, rows
     # Quitar duplicados preservando orden.
@@ -4186,16 +4500,26 @@ def submit_file_rows_to_kobo(file_id: int):
     if not token or not asset_uid:
         return jsonify({"ok": False, "error": "Faltan KOBO_API_TOKEN o KOBO_ASSET_UID en el servidor"}), 400
 
-    mapping_path_candidates = [
-        BASE_DIR / "mapping.yaml",
-        BASE_DIR.parent / "mapping.yaml",
-    ]
+    mapping_path_candidates: list[Path] = []
+    if str(entry.get("original_name") or "").strip() == DEMO_REGISTERED_NAME:
+        mapping_path_candidates.extend(
+            [
+                BASE_DIR / "mapping_demo.yaml",
+                BASE_DIR.parent / "mapping_demo.yaml",
+            ]
+        )
+    mapping_path_candidates.extend(
+        [
+            BASE_DIR / "mapping.yaml",
+            BASE_DIR.parent / "mapping.yaml",
+        ]
+    )
     mapping_path = next((p for p in mapping_path_candidates if p.exists()), None)
     if not mapping_path:
-        return jsonify({"ok": False, "error": "No se encontró mapping.yaml para envío a Kobo"}), 500
+        return jsonify({"ok": False, "error": "No se encontró mapping.yaml ni mapping_demo.yaml para envío a Kobo"}), 500
     mapping = _parse_simple_mapping_yaml(mapping_path)
     if not mapping:
-        return jsonify({"ok": False, "error": "mapping.yaml vacío o inválido"}), 500
+        return jsonify({"ok": False, "error": "Archivo de mapeo vacío o inválido"}), 500
 
     # Cargar módulos de transformación/envío de forma dinámica.
     try:

@@ -607,6 +607,68 @@ def get_uploader_stats() -> List[Dict[str, Any]]:
     return [_row_to_dict(r) for r in rows]
 
 
+DEMO_REGISTERED_NAME = "DEMO_Columnas_API_Kobo.xlsx"
+
+
+def ensure_demo_excel_registered_for_ui() -> None:
+    """
+    Registra el Excel de demostración (copia desde data/priority_validated/) en uploads/validados
+    y SQLite con estado «validado», para listarlo y abrirlo en el editor web.
+    Sin efecto si falta la plantilla en disco. Idempotente.
+    """
+    src = BASE_DIR / "data" / "priority_validated" / DEMO_REGISTERED_NAME
+    if not src.is_file():
+        return
+    note = (
+        "Demostración: todas las columnas reconocidas por excel_loader/API; usar solo como referencia o pruebas."
+    )
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM files
+                WHERE original_name = ? AND status = 'validado'
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (DEMO_REGISTERED_NAME,),
+            ).fetchone()
+        if row:
+            rec = _row_to_dict(row)
+            path = get_file_path(rec)
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, path)
+            rc = count_file_rows(path)
+            if rc is not None:
+                update_file_size_and_row_count(rec["id"], path.stat().st_size, rc)
+            return
+
+        VALIDATED_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        stored_name = f"{stamp}_{DEMO_REGISTERED_NAME}"
+        dest = VALIDATED_DIR / stored_name
+        shutil.copy2(src, dest)
+
+        size_bytes = dest.stat().st_size if dest.exists() else None
+        rec = add_file_record(
+            original_name=DEMO_REGISTERED_NAME,
+            stored_name=stored_name,
+            file_type="excel",
+            status="validado",
+            size_bytes=size_bytes,
+            notes=note,
+            uploaded_by="sistema-demo",
+        )
+        file_id = int(rec["id"])
+        mark_file_validated(file_id, validated_by="sistema-demo", notes=None)
+        rc = count_file_rows(dest)
+        if rc is not None:
+            update_file_size_and_row_count(file_id, dest.stat().st_size, rc)
+    except Exception as exc:
+        log.warning("ensure_demo_excel_registered_for_ui: %s", exc)
+
+
 def log_kobo_submission(
     *,
     file_id: Optional[int],

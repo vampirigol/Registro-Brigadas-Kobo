@@ -43,10 +43,14 @@ Estado: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/Estado"
 SEX: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/SEX"
 DOB: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/DOB"
 AGE: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/AGE"
+AGEMO: "/aD6FdrTDPaW4QzCLjmG7WE/group_py4vt65/AGEMO"
 
 # === Medidas y signos vitales ===
 HEI: "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/HEI"
 WEI: "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/WEI"
+IMC: "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/IMC"
+Pesoprepreg: "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/Pesoprepreg"
+SDG: "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/SDG"
 HPI: "/aD6FdrTDPaW4QzCLjmG7WE/group_jt9yr10/HPI"
 
 # === Medicina General ===

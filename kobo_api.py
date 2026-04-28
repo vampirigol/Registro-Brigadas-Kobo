@@ -49,6 +49,20 @@ def _resolve_owner_username(api_token: str, asset_uid: str, kc_url: str) -> str:
     raise RuntimeError(f"No se pudo resolver owner para asset_uid={asset_uid}")
 
 
+def _odk_multiselect_parts(value: object) -> list[str]:
+    """
+    Valores multiselect usados en filling_rules (separador |||).
+    En OpenRosa/ODK, select_multiple suele representarse como varios elementos
+    hermanos con el mismo nombre (uno por opción), no un solo nodo con «a|||b».
+    """
+    s = str(value or "").strip()
+    if not s:
+        return []
+    if "|||" in s:
+        return [p.strip() for p in s.split("|||") if p.strip()]
+    return [s]
+
+
 def _build_submission_xml(record: dict[str, str], mapping: dict[str, str], asset_uid: str) -> bytes:
     """Construye XML OpenRosa con raíz del formulario (asset_uid)."""
     root_id = asset_uid.strip()
@@ -63,19 +77,25 @@ def _build_submission_xml(record: dict[str, str], mapping: dict[str, str], asset
     parents: dict[str, ET.Element] = {"": root}
     for col, value in record.items():
         path = mapping.get(col)
-        value_str = str(value or "").strip()
-        if not path or not value_str:
+        if not path:
+            continue
+        value_str_full = str(value or "").strip()
+        if not value_str_full:
             continue
         tags = _path_to_tags(path, root_id)
         if not tags:
             continue
-        parent = root
-        for i, tag in enumerate(tags[:-1]):
-            key = "/".join(tags[: i + 1])
-            if key not in parents:
-                parents[key] = ET.SubElement(parent, tag)
-            parent = parents[key]
-        ET.SubElement(parent, tags[-1]).text = value_str
+        for piece in _odk_multiselect_parts(value_str_full):
+            value_str = str(piece or "").strip()
+            if not value_str:
+                continue
+            parent = root
+            for i, tag in enumerate(tags[:-1]):
+                key = "/".join(tags[: i + 1])
+                if key not in parents:
+                    parents[key] = ET.SubElement(parent, tag)
+                parent = parents[key]
+            ET.SubElement(parent, tags[-1]).text = value_str
 
     meta = ET.SubElement(root, "meta")
     ET.SubElement(meta, "instanceID").text = f"uuid:{uuid.uuid4()}"

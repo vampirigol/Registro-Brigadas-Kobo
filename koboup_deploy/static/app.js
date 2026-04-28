@@ -1858,7 +1858,8 @@
     return ['motriz', 'visual', 'auditiva', 'intelectual', 'otra'].indexOf(last) >= 0;
   }
 
-  var MED_GENERAL_COLS = DISABILITY_SHEET_EDIT_ALIASES.concat([
+  /** Incluye nombres de plantilla / excel_loader («Padecimiento / Motivo» → Diagnostico_Motivo). */
+  var MED_GENERAL_DIAG_ALIASES = [
     'Diagnóstico Medicina General',
     'Diagnostico Medicina General',
     'Diagnóstico Med',
@@ -1866,8 +1867,15 @@
     'Diagnósticos',
     'Diagnosticos',
     'Diagnósticos Medicina General',
-    'Diagnosticos Medicina General'
-  ]);
+    'Diagnosticos Medicina General',
+    'Padecimiento / Motivo',
+    'Padecimiento/Motivo',
+    'Padecimiento/ Motivo',
+    'Motivo de la consulta',
+    'Diagnóstico / Motivo',
+    'Diagnostico / Motivo'
+  ];
+  var MED_GENERAL_COLS = DISABILITY_SHEET_EDIT_ALIASES.concat(MED_GENERAL_DIAG_ALIASES);
   var MED_GENERAL_COLS_FOR_CLEAR = MED_GENERAL_COLS.concat([
     'Especificar diagnóstico (Medicina General)',
     'Especificar diagnóstico',
@@ -1892,21 +1900,15 @@
     'Medicamentos / Procedimiento',
     'Medicamentos'
   ];
-  var MG_DIAGNOSIS_COLUMN_ALIASES = [
-    'Diagnóstico Medicina General',
-    'Diagnostico Medicina General',
-    'Diagnóstico Med',
-    'Diagnóstico Med?',
-    'Diagnósticos',
-    'Diagnosticos',
-    'Diagnósticos Medicina General',
-    'Diagnosticos Medicina General'
-  ];
+  var MG_DIAGNOSIS_COLUMN_ALIASES = MED_GENERAL_DIAG_ALIASES;
   var DENTAL_COLS = [
     'Diagnóstico Odontología',
     'Diagnostico Odontologia',
     'Diagnóstico Odo',
     'Diagnóstico Odo?',
+    'Especificar diagnóstico (Odontología)',
+    'Especificar diagnostico (Odontologia)',
+    'Especificar_002',
     '¿Se realiza procedimiento odontológico?',
     'Se realiza procedimiento odontológico?',
     'Qué procedimiento se realiza',
@@ -1914,7 +1916,10 @@
     '¿Qué procedimiento se realiza?',
     '¿Que procedimiento se realiza?',
     'Qué procedimiento',
-    'Que procedimiento'
+    'Que procedimiento',
+    'Especificar procedimiento odontológico',
+    'Especificar procedimiento odontologico',
+    'Especificar_003'
   ];
   /** Columna condicional: ¿se hizo procedimiento? (va inmediatamente antes de «Qué procedimiento…»). */
   var PROC_ODON_TRIGGER_ALIASES = [
@@ -1936,7 +1941,15 @@
     'Diagnóstico Fisio',
     'Diagnostico Fisio',
     'Diagnóstico Fisioterapia',
-    'Diagnostico Fisioterapia'
+    'Diagnostico Fisioterapia',
+    'Especificar diagnóstico (Fisioterapia)',
+    'Especificar (fisioterapia)',
+    'Localización de la lesión',
+    'Localizacion de la lesion',
+    'Localizaci_n_de_la_lesi_n',
+    'Especificar localización de la lesión',
+    'Especificar localización',
+    'Especificar_001'
   ];
   /** Plan escrito en Kobo (Plan_de_Tratamiento): solo aplica a filas de fisioterapia. */
   var PLAN_TRATAMIENTO_FISIO_ALIASES = [
@@ -1973,11 +1986,21 @@
   var OFTALMO_COLS = [
     'Síntomas que presenta a la fecha de consulta',
     'Sintomas que presenta a la fecha de consulta',
+    'Especifique síntoma (oftalmología)',
+    'Especifique sintoma (oftalmologia)',
+    'Especifique_s_ntoma',
     '¿Ha recibido algún diagnóstico previo?',
     'Ha recibido algun diagnostico previo',
+    'Especifique diagnóstico previo (oftalmología)',
+    'Especifique diagnostico previo (oftalmologia)',
+    'Especifique_diagn_stico_previo',
     'Diagnóstico Actual',
     'Diagnostico Actual',
-    'Requiere anteojos'
+    'Otro diagnóstico (oftalmología actual)',
+    'Otro_diagn_stico',
+    '¿Requiere anteojos?',
+    'Requiere anteojos',
+    '_Requiere_anteojos'
   ];
   var LAB_COLS = [
     'Laboratorio Clínico',
@@ -2293,6 +2316,111 @@
       changed = true;
     }
 
+    var emin = _pickColumnByAliases(columns, ESPECIFICAR_MINORIA_ALIASES);
+    if (emin && !minoriaTriggersEspecificar(row, columns) && !looksMissingValue(row[emin])) {
+      row[emin] = '';
+      changed = true;
+    }
+    var elug = _pickColumnByAliases(columns, ESPECIFICAR_LUGAR_OTRO_ALIASES);
+    if (elug) {
+      var lc0 = _pickColumnByAliases(columns, ['Lugar de atención', 'Lugar']);
+      var lugOk = lc0 && normColName(String(row[lc0] == null ? '' : row[lc0]).trim()) === 'otro';
+      if (!lugOk && !looksMissingValue(row[elug])) {
+        row[elug] = '';
+        changed = true;
+      }
+    }
+    var edadm = _pickColumnByAliases(columns, EDAD_MESES_ALIASES);
+    if (edadm) {
+      var a0 = rowValueByAliases(row, columns, ['Edad', 'AGE']);
+      var n0 = Number(String(a0 || '').replace(',', '.'));
+      if (!((a0 !== '' && a0 != null && !isNaN(n0) && n0 < 1)) && !looksMissingValue(row[edadm])) {
+        row[edadm] = '';
+        changed = true;
+      }
+    }
+    var imcC = _pickColumnByAliases(columns, IMC_ALIASES);
+    if (imcC) {
+      var h0 = rowValueByAliases(row, columns, ['Talla (cm)', 'HEI']);
+      var w0 = rowValueByAliases(row, columns, ['Peso (kg)', 'WEI']);
+      if ((looksMissingValue(h0) || looksMissingValue(w0)) && !looksMissingValue(row[imcC])) {
+        row[imcC] = '';
+        changed = true;
+      }
+    }
+    var ppC = _pickColumnByAliases(columns, PESO_PRE_GEST_ALIASES);
+    var sdgC = _pickColumnByAliases(columns, SDG_ALIASES);
+    if (!meMlEmbarazo(rowValueByAliases(row, columns, ME_ML_ALIASES))) {
+      if (ppC && !looksMissingValue(row[ppC])) {
+        row[ppC] = '';
+        changed = true;
+      }
+      if (sdgC && !looksMissingValue(row[sdgC])) {
+        row[sdgC] = '';
+        changed = true;
+      }
+    }
+    var altC = _pickColumnByAliases(columns, ALTITUD_ALIASES);
+    var prC = _pickColumnByAliases(columns, PRECISION_ALIASES);
+    var la0 = _pickColumnByAliases(columns, ['Latitud', 'LAT', 'latitud']);
+    var lo0 = _pickColumnByAliases(columns, ['Longitud', 'LON', 'LNG', 'longitud']);
+    var coordsOk = la0 && lo0 && !looksMissingValue(row[la0]) && !looksMissingValue(row[lo0]);
+    if (!coordsOk) {
+      if (altC && !looksMissingValue(row[altC])) {
+        row[altC] = '';
+        changed = true;
+      }
+      if (prC && !looksMissingValue(row[prC])) {
+        row[prC] = '';
+        changed = true;
+      }
+    }
+    var rdest = _pickColumnByAliases(columns, REF_DEST_ALIASES);
+    if (rdest && !yesLike(rowValueByAliases(row, columns, ['Se hizo referencia', '¿Se hizo referencia?', 'Referencia', 'REF'])) && !looksMissingValue(row[rdest])) {
+      row[rdest] = '';
+      changed = true;
+    }
+
+    var edo2 = _pickColumnByAliases(columns, ['Especificar diagnóstico (Odontología)', 'Especificar diagnostico (Odontologia)', 'Especificar_002']);
+    if (edo2 && !rowDentalDiagHasOtro(row, columns) && !looksMissingValue(row[edo2])) {
+      row[edo2] = '';
+      changed = true;
+    }
+    var eproc = _pickColumnByAliases(columns, ['Especificar procedimiento odontológico', 'Especificar procedimiento odontologico', 'Especificar_003']);
+    if (eproc && !rowQueProcedimientoHasOtro(row, columns) && !looksMissingValue(row[eproc])) {
+      row[eproc] = '';
+      changed = true;
+    }
+    var efis = _pickColumnByAliases(columns, ['Especificar diagnóstico (Fisioterapia)', 'Especificar (fisioterapia)']);
+    if (efis && !rowFisioDiagHasOtro(row, columns) && !looksMissingValue(row[efis])) {
+      row[efis] = '';
+      changed = true;
+    }
+    var eloc = _pickColumnByAliases(columns, ['Especificar localización de la lesión', 'Especificar localización', 'Especificar_001']);
+    if (eloc && !rowLocalizacionLesionOtro(row, columns) && !looksMissingValue(row[eloc])) {
+      row[eloc] = '';
+      changed = true;
+    }
+    var osin = _pickColumnByAliases(columns, ['Especifique síntoma (oftalmología)', 'Especifique sintoma (oftalmologia)', 'Especifique_s_ntoma']);
+    if (osin && !rowOftSintomasOtro(row, columns) && !looksMissingValue(row[osin])) {
+      row[osin] = '';
+      changed = true;
+    }
+    var oprev = _pickColumnByAliases(columns, [
+      'Especifique diagnóstico previo (oftalmología)',
+      'Especifique diagnostico previo (oftalmologia)',
+      'Especifique_diagn_stico_previo'
+    ]);
+    if (oprev && !rowOftDiagPrevioOtro(row, columns) && !looksMissingValue(row[oprev])) {
+      row[oprev] = '';
+      changed = true;
+    }
+    var oact = _pickColumnByAliases(columns, ['Otro diagnóstico (oftalmología actual)', 'Otro_diagn_stico']);
+    if (oact && !rowOftDiagActualOtro(row, columns) && !looksMissingValue(row[oact])) {
+      row[oact] = '';
+      changed = true;
+    }
+
     return changed;
   }
 
@@ -2309,33 +2437,115 @@
     var isFemale = femaleLike(sexVal);
     var isPregnant = meMlEmbarazo(meMlVal);
     var isLactating = meMlLactancia(meMlVal);
+    var disVal = rowValueByAliases(row, columns, [
+      'Indicar si el paciente tiene alguna de las siguientes discapacidades',
+      'Discapacidad',
+      'DIS'
+    ]);
 
     var referenciaCols = [
       '¿A dónde?', 'A dónde', 'A donde',
       'Especificar referencia',
-      'Motivo Ref', 'Motivo Referido', 'Motivo referencia'
+      'Motivo Ref', 'Motivo Referido', 'Motivo referencia',
+      'Nombre o detalle del destino (referencia)',
+      'Referencia_especificar',
+      'REFSPEC'
     ];
 
+    // Secundarias globales (visibles junto a la columna principal)
+    if (typeof ESPECIFICAR_MINORIA_ALIASES !== 'undefined' && colIsAny(colName, ESPECIFICAR_MINORIA_ALIASES)) {
+      return minoriaTriggersEspecificar(row, columns);
+    }
+    if (typeof ESPECIFICAR_LUGAR_OTRO_ALIASES !== 'undefined' && colIsAny(colName, ESPECIFICAR_LUGAR_OTRO_ALIASES)) {
+      var lcEn = _pickColumnByAliases(columns, ['Lugar de atención', 'Lugar']);
+      return lcEn && normColName(String(row[lcEn] == null ? '' : row[lcEn]).trim()) === 'otro';
+    }
+    if (typeof EDAD_MESES_ALIASES !== 'undefined' && colIsAny(colName, EDAD_MESES_ALIASES)) {
+      return ageVal !== '' && ageVal != null && !isNaN(ageNum) && ageNum < 1;
+    }
+    if (typeof IMC_ALIASES !== 'undefined' && colIsAny(colName, IMC_ALIASES)) {
+      var hEn = rowValueByAliases(row, columns, ['Talla (cm)', 'HEI']);
+      var wEn = rowValueByAliases(row, columns, ['Peso (kg)', 'WEI']);
+      return !looksMissingValue(hEn) && !looksMissingValue(wEn);
+    }
+    if (
+      (typeof PESO_PRE_GEST_ALIASES !== 'undefined' && colIsAny(colName, PESO_PRE_GEST_ALIASES)) ||
+      (typeof SDG_ALIASES !== 'undefined' && colIsAny(colName, SDG_ALIASES))
+    ) {
+      return isPregnant;
+    }
+    if (
+      (typeof ALTITUD_ALIASES !== 'undefined' && colIsAny(colName, ALTITUD_ALIASES)) ||
+      (typeof PRECISION_ALIASES !== 'undefined' && colIsAny(colName, PRECISION_ALIASES))
+    ) {
+      var laEn = _pickColumnByAliases(columns, ['Latitud', 'LAT', 'latitud']);
+      var loEn = _pickColumnByAliases(columns, ['Longitud', 'LON', 'LNG', 'longitud']);
+      return laEn && loEn && !looksMissingValue(row[laEn]) && !looksMissingValue(row[loEn]);
+    }
+    if (typeof REF_DEST_ALIASES !== 'undefined' && colIsAny(colName, REF_DEST_ALIASES)) {
+      return hasRef;
+    }
+
     // Condicionales por especialidad
-    if (colIsAny(colName, DISABILITY_SHEET_EDIT_ALIASES) || colIsDisabilityBinarySubcolumn(colName)) {
+    if (colIsAny(colName, ['Especificar discapacidad', 'Especificar_discapacidad'])) {
+      return service === 'medicina general' && discapacidadOtra(disVal);
+    }
+    if (colIsAny(colName, DISABILITY_SHEET_EDIT_ALIASES) && !colIsAny(colName, ['Especificar discapacidad', 'Especificar_discapacidad'])) {
       return true;
     }
-    if (colIsAny(colName, MG_DIAGNOSIS_ESPECIFICAR_ALIASES) && !colIsAny(colName, ['Especificar discapacidad', 'Especificar_discapacidad', 'Especificar referencia'])) {
+    if (colIsDisabilityBinarySubcolumn(colName)) {
+      return true;
+    }
+    if (
+      colIsAny(colName, MG_DIAGNOSIS_ESPECIFICAR_ALIASES) &&
+      !colIsAny(colName, [
+        'Especificar discapacidad',
+        'Especificar_discapacidad',
+        'Especificar referencia',
+        'Especificar diagnóstico (Fisioterapia)',
+        'Especificar (fisioterapia)'
+      ])
+    ) {
       if (service !== 'medicina general') return false;
-      var dColEn = _pickColumnByAliases(columns, MG_DIAGNOSIS_COLUMN_ALIASES);
-      if (!dColEn) return true;
-      var dTxtEn = String((row && row[dColEn] != null) ? row[dColEn] : '').trim();
-      return rowDiagnosisTokensIncludeOtro(dTxtEn);
+      var dColEn2 = _pickColumnByAliases(columns, MG_DIAGNOSIS_COLUMN_ALIASES);
+      if (!dColEn2) return true;
+      var dTxtEn2 = String((row && row[dColEn2] != null) ? row[dColEn2] : '').trim();
+      return rowDiagnosisTokensIncludeOtro(dTxtEn2);
     }
     if (isEspecificarEntregaBeneficiarioColumn(colName)) {
       return rowEspecifiqueEntregaIsOtro(row, columns);
+    }
+    if (colIsAny(colName, ['Especificar diagnóstico (Odontología)', 'Especificar diagnostico (Odontologia)', 'Especificar_002'])) {
+      return service === 'dental' && rowDentalDiagHasOtro(row, columns);
+    }
+    if (colIsAny(colName, ['Especificar procedimiento odontológico', 'Especificar procedimiento odontologico', 'Especificar_003'])) {
+      return service === 'dental' && rowQueProcedimientoHasOtro(row, columns);
     }
     if (colIsAny(colName, MED_GENERAL_COLS) && !colIsAny(colName, DISABILITY_SHEET_EDIT_ALIASES) && !colIsDisabilityBinarySubcolumn(colName)) {
       return service === 'medicina general';
     }
     if (colIsAny(colName, DENTAL_COLS)) return service === 'dental';
     if (colIsPlanTratamientoFisioColumn(colName)) return service === 'fisioterapia';
+    if (colIsAny(colName, ['Especificar diagnóstico (Fisioterapia)', 'Especificar (fisioterapia)'])) {
+      return service === 'fisioterapia' && rowFisioDiagHasOtro(row, columns);
+    }
+    if (colIsAny(colName, ['Especificar localización de la lesión', 'Especificar localización', 'Especificar_001'])) {
+      return service === 'fisioterapia' && rowLocalizacionLesionOtro(row, columns);
+    }
     if (colIsAny(colName, FISIO_COLS)) return service === 'fisioterapia';
+    if (colIsAny(colName, ['Especifique síntoma (oftalmología)', 'Especifique sintoma (oftalmologia)', 'Especifique_s_ntoma'])) {
+      return service === 'oftalmologia' && rowOftSintomasOtro(row, columns);
+    }
+    if (colIsAny(colName, [
+      'Especifique diagnóstico previo (oftalmología)',
+      'Especifique diagnostico previo (oftalmologia)',
+      'Especifique_diagn_stico_previo'
+    ])) {
+      return service === 'oftalmologia' && rowOftDiagPrevioOtro(row, columns);
+    }
+    if (colIsAny(colName, ['Otro diagnóstico (oftalmología actual)', 'Otro_diagn_stico'])) {
+      return service === 'oftalmologia' && rowOftDiagActualOtro(row, columns);
+    }
     if (colIsAny(colName, OFTALMO_COLS)) return service === 'oftalmologia';
     if (colIsAny(colName, LAB_COLS)) return service === 'laboratorios';
 
@@ -2390,8 +2600,19 @@
       'Motivo Ref', 'Motivo referencia', 'Motivo_referencia', 'Motivo Referido', 'Motivo referido',
       'Especificar (motivo referido)', 'Especificar motivo referencia', 'Motivo_especificar',
       'Edad', 'AGE',
+      'Minoría', '_Pertenece_a_alguna_minor_a_t', '¿Pertenece a alguna minoría étnica?',
+      'Lugar de atención', 'Lugar',
+      'Talla (cm)', 'HEI', 'Peso (kg)', 'WEI',
+      'Latitud', 'LAT', 'Longitud', 'LON', 'LNG',
       'Diagnóstico Medicina General', 'Diagnostico Medicina General',
       'Diagnósticos', 'Diagnosticos', 'Diagnósticos Medicina General', 'Diagnosticos Medicina General',
+      'Diagnóstico Odontología', 'Diagnostico Odontologia',
+      'Qué procedimiento se realiza', 'Que procedimiento se realiza', '¿Qué procedimiento se realiza?',
+      'Fisioterapia', 'Diagnóstico Fisioterapia',
+      'Localización de la lesión', 'Localizacion de la lesion', 'Localizaci_n_de_la_lesi_n',
+      'Síntomas que presenta a la fecha de consulta', 'Sintomas que presenta a la fecha de consulta',
+      '¿Ha recibido algún diagnóstico previo?', 'Ha recibido algun diagnostico previo',
+      'Diagnóstico Actual', 'Diagnostico Actual',
       'Especificar diagnóstico (Medicina General)', 'Especificar diagnóstico',
       'Especificar Diagnóstico Medicina General', 'Especificar Diagnostico Medicina General', 'dxesp',
       'Especifique qué se entrega', 'Especifique que se entrega',
@@ -2462,25 +2683,48 @@
       if (service === 'medicina general') {
         needed.push('Padecimiento médico actual');
         needed.push('Indicar si el paciente tiene alguna de las siguientes discapacidades');
+        needed.push('Especificar discapacidad');
         needed.push('Diagnóstico Medicina General');
         needed.push('Especificar diagnóstico (Medicina General)');
       } else if (service === 'dental') {
         needed.push('Diagnóstico Odontología');
+        needed.push('Especificar diagnóstico (Odontología)');
         needed.push('¿Se realiza procedimiento odontológico?');
         needed.push('Qué procedimiento se realiza');
+        needed.push('Especificar procedimiento odontológico');
       } else if (service === 'fisioterapia') {
         needed.push('Fisioterapia');
+        needed.push('Especificar diagnóstico (Fisioterapia)');
+        needed.push('Localización de la lesión');
+        needed.push('Especificar localización de la lesión');
         needed.push('Plan de Tratamiento');
       } else if (service === 'oftalmologia') {
         needed.push('Síntomas que presenta a la fecha de consulta');
+        needed.push('Especifique síntoma (oftalmología)');
         needed.push('¿Ha recibido algún diagnóstico previo?');
+        needed.push('Especifique diagnóstico previo (oftalmología)');
         needed.push('Diagnóstico Actual');
-        needed.push('Requiere anteojos');
+        needed.push('Otro diagnóstico (oftalmología actual)');
+        needed.push('¿Requiere anteojos?');
       } else if (service === 'laboratorios') {
         needed.push('Laboratorio Clínico');
         needed.push('Diagnóstico / Resu');
         needed.push('Diagnóstico Resultados Laboratorio');
       }
+    });
+    [
+      'Especificar minoría étnica',
+      'Especificar lugar de atención (Otro)',
+      'Edad en meses',
+      'IMC',
+      'Peso pre gestacional (kg)',
+      'Semanas de gestación',
+      'Altitud (m)',
+      'Precisión (m)',
+      'Nombre o detalle del destino (referencia)',
+      ESPECIFICAR_MOTIVO_REF_FISIO_LABEL
+    ].forEach(function (g) {
+      needed.push(g);
     });
     return _ensureColumnsPresentInSheetState(needed);
   }
@@ -2501,14 +2745,15 @@
     ]) && !colIsAny(colName, [
       'Especificar (nacionalidad)', 'Especificar discapacidad', 'Especificar_discapacidad', 'Especificar referencia',
       'Especificar lo que se entrega al beneficiario', 'Especificar lo que se entrega', 'Especificar_lo_que_se_entrega_',
-      'NATOT', 'Nacionalidad (especificar)'
+      'NATOT', 'Nacionalidad (especificar)',
+      'Especificar diagnóstico (Fisioterapia)', 'Especificar (fisioterapia)'
     ])) {
       return 'medicina general';
     }
     if (colIsAny(colName, MED_GENERAL_COLS)) return 'medicina general';
     if (colIsAny(colName, DENTAL_COLS)) return 'dental';
     if (colIsPlanTratamientoFisioColumn(colName)) return 'fisioterapia';
-    if (isEspecificarMotivoRefFisioColumn(colName)) return 'fisioterapia';
+    // «Especificar (motivo referido)» (SPREFMOTMED) aplica a cualquier servicio si REF=Sí y Motivo Ref=Otro.
     if (colIsAny(colName, FISIO_COLS)) return 'fisioterapia';
     if (colIsAny(colName, OFTALMO_COLS)) return 'oftalmologia';
     if (colIsAny(colName, LAB_COLS)) return 'laboratorios';
@@ -2632,10 +2877,6 @@
   }
 
   function shouldEnableEspecificarMotivoRefFisioCell(row, columns) {
-    var service = normalizeServiceName(rowValueByAliases(row, columns, [
-      'Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda'
-    ]));
-    if (service !== 'fisioterapia') return false;
     var refVal = rowValueByAliases(row, columns, [
       'Se hizo referencia', '¿Se hizo referencia?', 'Referencia', 'REF'
     ]);
@@ -2804,6 +3045,325 @@
     return true;
   }
 
+  var ESPECIFICAR_MINORIA_ALIASES = [
+    'Especificar minoría étnica',
+    'Especificar Minoría Étnica',
+    'Especificar_Minor_a_tnica'
+  ];
+  var ESPECIFICAR_LUGAR_OTRO_ALIASES = [
+    'Especificar lugar de atención (Otro)',
+    'Especificar Lugar de Atención',
+    'OTH',
+    'PLACE'
+  ];
+  var EDAD_MESES_ALIASES = ['Edad en meses', 'AGEMO'];
+  var IMC_ALIASES = ['IMC', 'Índice de masa corporal'];
+  var PESO_PRE_GEST_ALIASES = ['Peso pre gestacional (kg)', 'Peso pre gestacional', 'Pesoprepreg'];
+  var SDG_ALIASES = ['Semanas de gestación', 'SDG'];
+  var ALTITUD_ALIASES = ['Altitud (m)', 'Altitud', 'alt'];
+  var PRECISION_ALIASES = ['Precisión (m)', 'Precision (m)', 'Precisión', 'acc'];
+  var REF_DEST_ALIASES = [
+    'Nombre o detalle del destino (referencia)',
+    'Referencia_especificar',
+    'REFSPEC'
+  ];
+
+  function minoriaTriggersEspecificar(row, columns) {
+    var m = rowValueByAliases(row, columns, [
+      'Minoría',
+      '_Pertenece_a_alguna_minor_a_t',
+      '¿Pertenece a alguna minoría étnica?',
+      'Pertenece a alguna minoría étnica'
+    ]);
+    return yesLike(m);
+  }
+
+  function anyRowMinorityNeedsEspec(rows, columns) {
+    var col = _pickColumnByAliases(columns, ESPECIFICAR_MINORIA_ALIASES);
+    if (col && hasDataInColumn(col, rows)) return true;
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (minoriaTriggersEspecificar(rows[i], columns)) return true;
+    }
+    return false;
+  }
+
+  function anyRowLugarAtencionOtro(rows, columns) {
+    var lc = _pickColumnByAliases(columns, ['Lugar de atención', 'Lugar']);
+    if (!lc) return false;
+    for (var i = 0; i < (rows || []).length; i++) {
+      var v = String(rows[i] && rows[i][lc] != null ? rows[i][lc] : '').trim();
+      if (normColName(v) === 'otro') return true;
+    }
+    return false;
+  }
+
+  function anyRowEdadMenorUnAnio(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      var a = rowValueByAliases(rows[i], columns, ['Edad', 'AGE']);
+      var n = Number(String(a || '').replace(',', '.'));
+      if (a !== '' && a != null && !isNaN(n) && n < 1) return true;
+    }
+    return false;
+  }
+
+  function anyRowHasTallaPeso(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      var h = rowValueByAliases(rows[i], columns, ['Talla (cm)', 'HEI']);
+      var w = rowValueByAliases(rows[i], columns, ['Peso (kg)', 'WEI']);
+      if (!looksMissingValue(h) && !looksMissingValue(w)) return true;
+    }
+    return false;
+  }
+
+  function anyRowMeMlEmbarazada(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (meMlEmbarazo(rowValueByAliases(rows[i], columns, ME_ML_ALIASES))) return true;
+    }
+    return false;
+  }
+
+  function anyRowHasLatLon(rows, columns) {
+    var la = _pickColumnByAliases(columns, ['Latitud', 'LAT', 'latitud']);
+    var lo = _pickColumnByAliases(columns, ['Longitud', 'LON', 'LNG', 'longitud']);
+    if (!la || !lo) return false;
+    for (var i = 0; i < (rows || []).length; i++) {
+      var v1 = String(rows[i] && rows[i][la] != null ? rows[i][la] : '').trim();
+      var v2 = String(rows[i] && rows[i][lo] != null ? rows[i][lo] : '').trim();
+      if (!looksMissingValue(v1) && !looksMissingValue(v2)) return true;
+    }
+    return false;
+  }
+
+  function anyRowReferenciaSi(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (yesLike(rowValueByAliases(rows[i], columns, [
+        'Se hizo referencia',
+        '¿Se hizo referencia?',
+        'Referencia',
+        'REF'
+      ]))) return true;
+    }
+    return false;
+  }
+
+  function rowDentalDiagHasOtro(row, columns) {
+    var c = _pickColumnByAliases(columns, [
+      'Diagnóstico Odontología',
+      'Diagnostico Odontologia',
+      'Diagnostico Odontología'
+    ]);
+    if (!c || !row) return false;
+    return rowDiagnosisTokensIncludeOtro(row[c]);
+  }
+
+  function rowQueProcedimientoHasOtro(row, columns) {
+    var c = _pickColumnByAliases(columns, QUE_PROCEDIMIENTO_DENTAL_ALIASES);
+    if (!c || !row) return false;
+    return rowDiagnosisTokensIncludeOtro(row[c]);
+  }
+
+  function rowFisioDiagHasOtro(row, columns) {
+    var c = _pickColumnByAliases(columns, [
+      'Fisioterapia',
+      'Diagnóstico Fisioterapia',
+      'Diagnostico Fisioterapia'
+    ]);
+    if (!c || !row) return false;
+    return rowDiagnosisTokensIncludeOtro(row[c]);
+  }
+
+  function rowLocalizacionLesionOtro(row, columns) {
+    var c = _pickColumnByAliases(columns, [
+      'Localización de la lesión',
+      'Localizacion de la lesion',
+      'Localizaci_n_de_la_lesi_n'
+    ]);
+    if (!c || !row) return false;
+    var tks = tokenizeOptionValue(row[c]);
+    for (var i = 0; i < tks.length; i++) {
+      if (normColName(tks[i]) === 'otro') return true;
+    }
+    return normColName(row[c]) === 'otro';
+  }
+
+  function rowOftSintomasOtro(row, columns) {
+    var c = _pickColumnByAliases(columns, [
+      'Síntomas que presenta a la fecha de consulta',
+      'Sintomas que presenta a la fecha de consulta'
+    ]);
+    if (!c || !row) return false;
+    return rowDiagnosisTokensIncludeOtro(row[c]);
+  }
+
+  function rowOftDiagPrevioOtro(row, columns) {
+    var c = _pickColumnByAliases(columns, [
+      '¿Ha recibido algún diagnóstico previo?',
+      'Ha recibido algun diagnostico previo'
+    ]);
+    if (!c || !row) return false;
+    return rowDiagnosisTokensIncludeOtro(row[c]);
+  }
+
+  function rowOftDiagActualOtro(row, columns) {
+    var c = _pickColumnByAliases(columns, ['Diagnóstico Actual', 'Diagnostico Actual']);
+    if (!c || !row) return false;
+    return rowDiagnosisTokensIncludeOtro(row[c]);
+  }
+
+  function anyRowDentalDiagOtro(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (rowDentalDiagHasOtro(rows[i], columns)) return true;
+    }
+    return false;
+  }
+
+  function anyRowQueProcOtro(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (rowQueProcedimientoHasOtro(rows[i], columns)) return true;
+    }
+    return false;
+  }
+
+  function anyRowFisioDiagOtro(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (rowFisioDiagHasOtro(rows[i], columns)) return true;
+    }
+    return false;
+  }
+
+  function anyRowLocalizLesionOtro(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (rowLocalizacionLesionOtro(rows[i], columns)) return true;
+    }
+    return false;
+  }
+
+  function anyRowOftSintomasOtro(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (rowOftSintomasOtro(rows[i], columns)) return true;
+    }
+    return false;
+  }
+
+  function anyRowOftPrevioOtro(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (rowOftDiagPrevioOtro(rows[i], columns)) return true;
+    }
+    return false;
+  }
+
+  function anyRowOftActualOtro(rows, columns) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      if (rowOftDiagActualOtro(rows[i], columns)) return true;
+    }
+    return false;
+  }
+
+  function shouldShowGlobalSecondaryColumn(c, columns, rows) {
+    var g = colIsAny(c, ESPECIFICAR_MINORIA_ALIASES) || colIsAny(c, ESPECIFICAR_LUGAR_OTRO_ALIASES) ||
+      colIsAny(c, EDAD_MESES_ALIASES) || colIsAny(c, IMC_ALIASES) || colIsAny(c, PESO_PRE_GEST_ALIASES) ||
+      colIsAny(c, SDG_ALIASES) || colIsAny(c, ALTITUD_ALIASES) || colIsAny(c, PRECISION_ALIASES) ||
+      colIsAny(c, REF_DEST_ALIASES);
+    if (!g) return true;
+    if (colIsAny(c, ESPECIFICAR_MINORIA_ALIASES)) {
+      return anyRowMinorityNeedsEspec(rows, columns) || hasDataInColumn(c, rows);
+    }
+    if (colIsAny(c, ESPECIFICAR_LUGAR_OTRO_ALIASES)) {
+      return anyRowLugarAtencionOtro(rows, columns) || hasDataInColumn(c, rows);
+    }
+    if (colIsAny(c, EDAD_MESES_ALIASES)) {
+      return anyRowEdadMenorUnAnio(rows, columns) || hasDataInColumn(c, rows);
+    }
+    if (colIsAny(c, IMC_ALIASES)) {
+      return anyRowHasTallaPeso(rows, columns) || hasDataInColumn(c, rows);
+    }
+    if (colIsAny(c, PESO_PRE_GEST_ALIASES) || colIsAny(c, SDG_ALIASES)) {
+      return anyRowMeMlEmbarazada(rows, columns) || hasDataInColumn(c, rows);
+    }
+    if (colIsAny(c, ALTITUD_ALIASES) || colIsAny(c, PRECISION_ALIASES)) {
+      return anyRowHasLatLon(rows, columns) || hasDataInColumn(c, rows);
+    }
+    if (colIsAny(c, REF_DEST_ALIASES)) {
+      return anyRowReferenciaSi(rows, columns) || hasDataInColumn(c, rows);
+    }
+    return true;
+  }
+
+  function shouldShowServiceSecondaryColumn(c, columns, rows) {
+    var odoE = colIsAny(c, ['Especificar diagnóstico (Odontología)', 'Especificar diagnostico (Odontologia)', 'Especificar_002']);
+    var odoP = colIsAny(c, ['Especificar procedimiento odontológico', 'Especificar procedimiento odontologico', 'Especificar_003']);
+    var fisE = colIsAny(c, ['Especificar diagnóstico (Fisioterapia)', 'Especificar (fisioterapia)']);
+    var fisL = colIsAny(c, ['Especificar localización de la lesión', 'Especificar localización', 'Especificar_001']);
+    var oftS = colIsAny(c, ['Especifique síntoma (oftalmología)', 'Especifique sintoma (oftalmologia)', 'Especifique_s_ntoma']);
+    var oftP = colIsAny(c, [
+      'Especifique diagnóstico previo (oftalmología)',
+      'Especifique diagnostico previo (oftalmologia)',
+      'Especifique_diagn_stico_previo'
+    ]);
+    var oftA = colIsAny(c, ['Otro diagnóstico (oftalmología actual)', 'Otro_diagn_stico']);
+    if (!odoE && !odoP && !fisE && !fisL && !oftS && !oftP && !oftA) return true;
+    if (odoE) return anyRowDentalDiagOtro(rows, columns) || hasDataInColumn(c, rows);
+    if (odoP) return anyRowQueProcOtro(rows, columns) || hasDataInColumn(c, rows);
+    if (fisE) return anyRowFisioDiagOtro(rows, columns) || hasDataInColumn(c, rows);
+    if (fisL) return anyRowLocalizLesionOtro(rows, columns) || hasDataInColumn(c, rows);
+    if (oftS) return anyRowOftSintomasOtro(rows, columns) || hasDataInColumn(c, rows);
+    if (oftP) return anyRowOftPrevioOtro(rows, columns) || hasDataInColumn(c, rows);
+    if (oftA) return anyRowOftActualOtro(rows, columns) || hasDataInColumn(c, rows);
+    return true;
+  }
+
+  function _spliceColumnImmediatelyAfter(cols, parentName, childName) {
+    if (!cols || !parentName || !childName) return false;
+    if (normColName(parentName) === normColName(childName)) return false;
+    var pIdx = -1;
+    var cIdx = -1;
+    for (var i = 0; i < cols.length; i += 1) {
+      if (normColName(cols[i]) === normColName(parentName)) pIdx = i;
+      if (normColName(cols[i]) === normColName(childName)) cIdx = i;
+    }
+    if (pIdx < 0 || cIdx < 0) return false;
+    var want = pIdx + 1;
+    if (cIdx === want) return false;
+    var colName = cols.splice(cIdx, 1)[0];
+    if (cIdx < pIdx) pIdx -= 1;
+    cols.splice(pIdx + 1, 0, colName);
+    return true;
+  }
+
+  function ensureSecondaryColumnOrder() {
+    if (!sheetState || !sheetState.columns) return false;
+    var cols = sheetState.columns;
+    var changed = false;
+    var pairs = [
+      [_pickColumnByAliases(cols, ['Minoría', '_Pertenece_a_alguna_minor_a_t', '¿Pertenece a alguna minoría étnica?']), 'Especificar minoría étnica'],
+      [_pickColumnByAliases(cols, ['Lugar de atención', 'Lugar']), 'Especificar lugar de atención (Otro)'],
+      [_pickColumnByAliases(cols, ['Edad', 'AGE']), 'Edad en meses'],
+      [_pickColumnByAliases(cols, ['Peso (kg)', 'WEI']), 'IMC'],
+      [_pickColumnByAliases(cols, IMC_ALIASES), 'Peso pre gestacional (kg)'],
+      [_pickColumnByAliases(cols, PESO_PRE_GEST_ALIASES), 'Semanas de gestación'],
+      [_pickColumnByAliases(cols, ['Longitud', 'LON', 'LNG', 'longitud']), 'Altitud (m)'],
+      [_pickColumnByAliases(cols, ALTITUD_ALIASES), 'Precisión (m)'],
+      [_pickColumnByAliases(cols, ['A dónde', 'A donde', '¿A dónde?', 'Referencia_donde']), 'Nombre o detalle del destino (referencia)'],
+      [_pickColumnByAliases(cols, MOTIVO_REF_ALIASES), ESPECIFICAR_MOTIVO_REF_FISIO_LABEL],
+      [_pickColumnByAliases(cols, ['Diagnóstico Odontología', 'Diagnostico Odontologia']), 'Especificar diagnóstico (Odontología)'],
+      [_pickColumnByAliases(cols, QUE_PROCEDIMIENTO_DENTAL_ALIASES), 'Especificar procedimiento odontológico'],
+      [_pickColumnByAliases(cols, ['Fisioterapia', 'Diagnóstico Fisioterapia']), 'Especificar diagnóstico (Fisioterapia)'],
+      [_pickColumnByAliases(cols, ['Especificar diagnóstico (Fisioterapia)', 'Especificar (fisioterapia)']), 'Localización de la lesión'],
+      [_pickColumnByAliases(cols, ['Localización de la lesión', 'Localizacion de la lesion', 'Localizaci_n_de_la_lesi_n']), 'Especificar localización de la lesión'],
+      [_pickColumnByAliases(cols, ['Síntomas que presenta a la fecha de consulta', 'Sintomas que presenta a la fecha de consulta']), 'Especifique síntoma (oftalmología)'],
+      [_pickColumnByAliases(cols, ['¿Ha recibido algún diagnóstico previo?', 'Ha recibido algun diagnostico previo']), 'Especifique diagnóstico previo (oftalmología)'],
+      [_pickColumnByAliases(cols, ['Diagnóstico Actual', 'Diagnostico Actual']), 'Otro diagnóstico (oftalmología actual)'],
+      [_pickColumnByAliases(cols, ['Otro diagnóstico (oftalmología actual)', 'Otro_diagn_stico']), '¿Requiere anteojos?']
+    ];
+    for (var pi = 0; pi < pairs.length; pi += 1) {
+      if (pairs[pi][0] && pairs[pi][1]) {
+        if (_spliceColumnImmediatelyAfter(cols, pairs[pi][0], pairs[pi][1])) changed = true;
+      }
+    }
+    if (changed && sheetState.colWidths) sheetState.colWidths = {};
+    return changed;
+  }
+
   function visibleColumnIndexes(columns, rows) {
     if (sheetShowAllColumns) {
       var all = [];
@@ -2822,6 +3382,12 @@
         continue;
       }
       if (isEspecificarMotivoRefFisioColumn(c) && !shouldShowEspecificarMotivoRefFisioColumn(c, columns, rows)) {
+        continue;
+      }
+      if (!shouldShowGlobalSecondaryColumn(c, columns, rows)) {
+        continue;
+      }
+      if (!shouldShowServiceSecondaryColumn(c, columns, rows)) {
         continue;
       }
       if (isAlwaysVisibleLugarAtencionColumn(c)) {
@@ -2861,17 +3427,33 @@
     }
   }
 
-  function buildSimpleCheck(columns, rows, schema, aliasToLabel) {
+  function buildSimpleCheck(columns, rows, schema, aliasToLabel, matchedFromParent) {
     var requiredLabels = (schema || []).filter(function (x) { return !!x.required; }).map(function (x) { return x.label; });
     var matched = {};
-    (columns || []).forEach(function (c) {
-      var col = String(c || '').trim();
-      if (!col) return;
-      var label = aliasToLabel[normColName(col)];
-      if (!label) return;
-      if (!matched[label]) matched[label] = [];
-      matched[label].push(col);
-    });
+    if (matchedFromParent && typeof matchedFromParent === 'object' && Object.keys(matchedFromParent).length) {
+      Object.keys(matchedFromParent).forEach(function (lbl) {
+        var arr = matchedFromParent[lbl];
+        if (arr && arr.length) matched[lbl] = arr.slice();
+      });
+    } else {
+      var headerNormToLabel = {
+        'toma de consentimiento antes de iniciar la consulta': 'Toma de consentimiento antes de iniciar la consulta',
+        'pertenece a alguna minora etnica': 'Minoría',
+        'originario': 'Estado',
+        'motivo referido': 'Motivo Ref',
+        'laboratorio clinico': 'Laboratorio Clínico',
+        'coordenadas': 'Coordenadas'
+      };
+      (columns || []).forEach(function (c) {
+        var col = String(c || '').trim();
+        if (!col) return;
+        var key = normColName(col);
+        var label = headerNormToLabel[key] || aliasToLabel[key];
+        if (!label) return;
+        if (!matched[label]) matched[label] = [];
+        matched[label].push(col);
+      });
+    }
 
     var missingRequiredColumns = requiredLabels.filter(function (lbl) { return !(matched[lbl] && matched[lbl].length); });
     var rowsMissing = [];
@@ -2931,11 +3513,8 @@
     var fisioMotivoRefDetailRows = [];
     var motivoRefColB = findCol(MOTIVO_REF_ALIASES);
     var motEspColB = findCol(ESPECIFICAR_MOTIVO_REF_FISIO_ALIASES);
-    var serviceColB = findCol(['Servicio que se brinda', 'Servicio', 'Especialidad', 'Servicio_que_se_brinda']);
-    if (refCol && motivoRefColB && serviceColB && motEspColB) {
+    if (refCol && motivoRefColB && motEspColB) {
       (rows || []).forEach(function (row, idx) {
-        var rawSvc = String((row && row[serviceColB]) || '').trim();
-        if (!rawSvc || normalizeServiceName(rawSvc) !== 'fisioterapia') return;
         var refVal3 = normColName(preNormalizeKoboOptionsCell((row && row[refCol]) || ''));
         if (refVal3 !== 'si' && refVal3 !== 'sí') return;
         var mRaw = String((row && row[motivoRefColB]) || '').trim();
@@ -3056,6 +3635,42 @@
       && serviceMissing.length === 0
     );
 
+    // Resaltar celdas concreta (rejilla HTML): clave "fila0\\tcolumna" → motivos
+    var validationHighlights = {};
+    function addCellHighlight(excelRow, colName, reason) {
+      if (!colName || excelRow == null || excelRow === '') return;
+      var r0 = excelRow - 2;
+      if (r0 < 0) return;
+      var k = r0 + '\t' + colName;
+      if (!validationHighlights[k]) validationHighlights[k] = [];
+      if (validationHighlights[k].indexOf(reason) < 0) validationHighlights[k].push(reason);
+    }
+    invalidOptionRows.forEach(function (it) {
+      var cn = it.column || '';
+      (it.rows || []).forEach(function (exR) {
+        addCellHighlight(exR, cn, 'Fuera de catálogo');
+      });
+    });
+    if (dateCol) {
+      dateRows.forEach(function (exR) { addCellHighlight(exR, dateCol, 'Fecha (YYYY-MM-DD)'); });
+    }
+    if (coordsCol) {
+      coordinatesRows.forEach(function (exR) { addCellHighlight(exR, coordsCol, 'Coordenadas'); });
+    }
+    if (whereCol) {
+      referenceDestinationRows.forEach(function (exR) { addCellHighlight(exR, whereCol, 'Complete «A dónde»'); });
+    }
+    if (motEspColB) {
+      fisioMotivoRefDetailRows.forEach(function (exR) { addCellHighlight(exR, motEspColB, 'Especificar motivo ref.'); });
+    }
+    rowsMissing.forEach(function (rm) {
+      var exr = rm.excel_row;
+      (rm.missing_labels || []).forEach(function (lbl) {
+        var cs = matched[lbl] || [];
+        if (cs.length) addCellHighlight(exr, cs[0], 'Obligatorio');
+      });
+    });
+
     return {
       ready_to_submit: ready,
       missing_required_columns: missingRequiredColumns,
@@ -3071,7 +3686,8 @@
         fisio_motivo_ref_detail_rows: fisioMotivoRefDetailRows.slice(0, 30)
       },
       service_conditional_missing: serviceMissing,
-      human_message: ready ? 'Listo para enviar a Kobo.' : 'Faltan datos por corregir antes de enviar a Kobo.'
+      human_message: ready ? 'Listo para enviar a Kobo.' : 'Faltan datos por corregir antes de enviar a Kobo.',
+      validation_highlights: validationHighlights
     };
   }
 
@@ -3151,7 +3767,7 @@
       unknown_columns: unknown,
       duplicates: dups,
       rename_suggestions: suggestions,
-      simple_check: buildSimpleCheck(columns || [], rows || [], schema || [], aliasToLabel),
+      simple_check: buildSimpleCheck(columns || [], rows || [], schema || [], aliasToLabel, matched),
       kobo_schema_source: previousCheck && previousCheck.kobo_schema_source ? previousCheck.kobo_schema_source : ''
     };
   }
@@ -3182,6 +3798,9 @@
     h += '<div class="sheet-check-title">' + (sc.ready_to_submit ? 'Listo para enviar' : 'Faltan datos') + '</div>';
     h += '</div></div>';
     h += '<div class="sheet-check-human">' + esc(sc.human_message || '') + '</div>';
+    if (!sc.ready_to_submit) {
+      h += '<div class="sheet-check-list sheet-check-grid-hint">En la tabla de abajo, las celdas con <strong>borde naranja</strong> coinciden con estas alertas; pasa el cursor sobre la celda para ver el motivo.</div>';
+    }
 
     if (missing.length) {
       h += '<div class="sheet-check-list"><strong>Corrige estas columnas obligatorias:</strong> ' + missing.map(esc).join(', ') + '</div>';
@@ -3214,7 +3833,7 @@
         + '</div>';
     }
     if (invalid.fisio_motivo_ref_detail_rows && invalid.fisio_motivo_ref_detail_rows.length) {
-      h += '<div class="sheet-check-list"><strong>Falta "Especificar (motivo referido)" en fisioterapia (referencia = Sí y «Motivo Ref» = Otro):</strong> filas '
+      h += '<div class="sheet-check-list"><strong>Falta "Especificar (motivo referido)" (referencia = Sí y «Motivo Ref» = Otro):</strong> filas '
         + invalid.fisio_motivo_ref_detail_rows.slice(0, 10).map(String).join(', ')
         + '</div>';
     }
@@ -3359,6 +3978,7 @@
   function renderSheetTable() {
     if (!sheetState || !sheetTableWrap) return;
     ensureColumnsForServicesInSheet();
+    ensureSecondaryColumnOrder();
     ensureEspecificarEntregaBeneficiarioColumn();
     ensureEspecificarMotivoRefFisioColumn();
     ensureProcedimientoDentalAfterTriggerColumn();
@@ -3387,6 +4007,7 @@
       updateColRemoveOptions();
       return;
     }
+    var vHi = (sheetState.columnsCheck && sheetState.columnsCheck.simple_check && sheetState.columnsCheck.simple_check.validation_highlights) || {};
     var h = '<table class="sheet-table" role="grid" aria-label="Hoja de datos del archivo"><thead><tr><th class="sheet-corner" scope="col">#</th>';
     for (var vi = 0; vi < visibleIdx.length; vi += 1) {
       var cj = visibleIdx[vi];
@@ -3435,7 +4056,12 @@
         }
         var disAttr = disabledByRule ? ' disabled aria-disabled="true"' : '';
         var disCls = disabledByRule ? ' sheet-cell-disabled' : '';
-        h += '<td style="width:' + cw + 'px;min-width:' + cw + 'px;max-width:' + cw + 'px;"><input class="sheet-cell' + disCls + '" type="text" data-r="' + ri + '" data-ci="' + cj + '" value="' + escAttr(cell) + '" spellcheck="false"' + disAttr + ' /></td>';
+        var vKey = ri + '\t' + cname;
+        var vReasons = vHi[vKey];
+        var invCls = vReasons && vReasons.length ? ' sheet-cell-invalid' : '';
+        var invTitle = vReasons && vReasons.length ? (' title="' + escAttr(vReasons.join(' · ')) + '"') : '';
+        var tdCls = vReasons && vReasons.length ? 'sheet-td sheet-td-invalid' : 'sheet-td';
+        h += '<td class="' + tdCls + '" style="width:' + cw + 'px;min-width:' + cw + 'px;max-width:' + cw + 'px;"><input class="sheet-cell' + disCls + invCls + '" type="text" data-r="' + ri + '" data-ci="' + cj + '" value="' + escAttr(cell) + '" spellcheck="false"' + disAttr + invTitle + (vReasons && vReasons.length ? ' aria-invalid="true"' : '') + ' /></td>';
       }
       h += '<td class="sheet-dummy" aria-hidden="true"></td></tr>';
     }
@@ -4047,13 +4673,22 @@
         if (!sheetState.rows[ri]) sheetState.rows[ri] = {};
         var cname = sheetState.columns[ci];
         sheetState.rows[ri][cname] = el.value;
-        var changedByDefaults = applyRowDefaultsByKoboRules(sheetState.rows[ri], sheetState.columns);
-        var changedByDiag = applyDiagnosticoMGNormalizationForRow(
-          sheetState.rows[ri],
-          sheetState.columns,
-          cname,
-          el.value
-        );
+        /* Diagnóstico MG (+ específico dx): no aplicar normalize/defaults por cada tecla;
+           re-render reemplaza el input y mueve el foco (ej. «Otro» token a token).
+           Las reglas se aplican al confirmar cambio (evento «change», blur). */
+        var isMgDiagOrDxCol = colIsAny(cname, MG_DIAGNOSIS_COLUMN_ALIASES) ||
+          colIsAny(cname, MG_DIAGNOSIS_ESPECIFICAR_ALIASES);
+        var changedByDefaults = false;
+        var changedByDiag = false;
+        if (!isMgDiagOrDxCol) {
+          changedByDefaults = applyRowDefaultsByKoboRules(sheetState.rows[ri], sheetState.columns);
+          changedByDiag = applyDiagnosticoMGNormalizationForRow(
+            sheetState.rows[ri],
+            sheetState.columns,
+            cname,
+            el.value
+          );
+        }
         // Evitar re-render por tecla: actualiza estado de la fila en vivo y
         // solo re-renderiza cuando una regla realmente lo exige.
         if (changedByDiag || changedByDefaults) {
@@ -4088,12 +4723,27 @@
         var el = e.target;
         if (!el.classList || !el.classList.contains('sheet-cell') || !sheetState) return;
         var ci = parseInt(el.getAttribute('data-ci'), 10);
+        var ri = parseInt(el.getAttribute('data-r'), 10);
         if (isNaN(ci) || !sheetState.columns[ci]) return;
         var cname = sheetState.columns[ci];
-        // Recalcular habilitación/deshabilitación al confirmar cambio en columnas gatillo.
-        if (isRuleTriggerColumn(cname)) {
-          rerenderSheetPreservingViewportAndFocus();
-        } else if (colIsAny(cname, MG_DIAGNOSIS_COLUMN_ALIASES) || colIsAny(cname, MG_DIAGNOSIS_ESPECIFICAR_ALIASES)) {
+        var postDiag = false;
+        var postDef = false;
+        if (!isNaN(ri) && sheetState.rows[ri]) {
+          sheetState.rows[ri][cname] = el.value;
+          postDiag = applyDiagnosticoMGNormalizationForRow(
+            sheetState.rows[ri],
+            sheetState.columns,
+            cname,
+            el.value
+          );
+          postDef = applyRowDefaultsByKoboRules(sheetState.rows[ri], sheetState.columns);
+        }
+        /* Tras cerrar la edición: normalizar DG MG, defaults y columnas habilitadas (Otro/dx específico). */
+        var need = postDiag || postDef ||
+          isRuleTriggerColumn(cname) ||
+          colIsAny(cname, MG_DIAGNOSIS_COLUMN_ALIASES) ||
+          colIsAny(cname, MG_DIAGNOSIS_ESPECIFICAR_ALIASES);
+        if (need || (sheetState && sheetState.koboSchema)) {
           rerenderSheetPreservingViewportAndFocus();
         }
       });

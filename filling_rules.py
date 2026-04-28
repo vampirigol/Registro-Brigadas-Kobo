@@ -330,8 +330,84 @@ DX_OPTIONS = [
     "Vaginitis",
     "Vaginosis",
     "Varicela",
+    "Sinusitis",
     "Otro",
 ]
+
+# Valores «name» en el XForm Kobo (lista jw2bb46 en el XML del formulario), no etiquetas.
+# Sin esto, la API muestra vacío en multiselect: el servidor espera p. ej. «19» para Cefalea.
+DX_KOBO_NAME_BY_LABEL: dict[str, str] = {
+    "Consulta de rutina": "3",
+    "Diarrea aguda": "4",
+    "Dermatosis": "5",
+    "Bronquitis aguda": "6",
+    "Embarazo": "7",
+    "Parasitosis": "9",
+    "Dolor abdominal": "10",
+    "Amigdalitis": "11",
+    "Desnutrición": "12",
+    "Anemia": "13",
+    "Síndrome febril": "14",
+    "Asma": "18",
+    "Cefalea": "19",
+    "Pediculosis": "20",
+    "Deshidratación": "21",
+    "Rinofaringitis": "24",
+    "Rinitis alérgica": "25",
+    "Conjuntivitis": "26",
+    "Escabiosis": "27",
+    "Dermatitis alérgica": "29",
+    "Estreñimiento": "30",
+    "Amenorrea": "33",
+    "Carie dental": "34",
+    "Cistitis": "35",
+    "Consulta de seguimiento": "36",
+    "Dermatitis irritante primaria del pañal": "37",
+    "Faringoamigdalitis aguda": "38",
+    "Gastroenteritis o colitis de origen infeccioso (sin especificación del agente infeccioso)": "39",
+    "Herida": "40",
+    "Otitis media": "41",
+    "Pielonefritis aguda": "42",
+    "Quemadura": "43",
+    "Sospecha de dengue (Con signos de alarma)": "44",
+    "Sospecha de dengue (Sin signos de alarma)": "45",
+    "Sospecha de neumonía": "46",
+    "Sospecha de rubeola": "47",
+    "Sospecha de sarampión": "48",
+    "Sospecha de malaria": "49",
+    "Traumatismos": "50",
+    "Vaginitis": "51",
+    "Vaginosis": "52",
+    "Varicela": "53",
+    "Sinusitis": "sinusitis",
+    "Otro": "22",
+}
+
+DX_KOBO_OTRO_VALUE = "22"
+
+
+def _dx_labels_to_kobo_instance_values(joined: str) -> str:
+    """Convierte piezas etiqueta (|||) en «name» del XForm para select_multiple DX."""
+    s = str(joined or "").strip()
+    if not s:
+        return ""
+    parts = [p.strip() for p in s.split(MULTISELECT_SEP) if p.strip()]
+    out: list[str] = []
+    for p in parts:
+        if p in DX_KOBO_NAME_BY_LABEL:
+            out.append(DX_KOBO_NAME_BY_LABEL[p])
+            continue
+        if p.isdigit() or p == "sinusitis":
+            out.append(p)
+            continue
+        norm = _norm_str(p)
+        hit = next((lab for lab in DX_KOBO_NAME_BY_LABEL if _norm_str(lab) == norm), None)
+        if hit:
+            out.append(DX_KOBO_NAME_BY_LABEL[hit])
+        else:
+            out.append(DX_KOBO_OTRO_VALUE)
+    return MULTISELECT_SEP.join(out)
+
 
 # ── Diagnósticos de Odontología (etiquetas exactas del formulario) ────────────
 DX_DENTAL_OPTIONS = [
@@ -392,7 +468,7 @@ def _map_diagnostico_dental(text: str) -> tuple[str, str]:
     matched: list[str] = []
     unmatched: list[str] = []
 
-    parts = [p.strip() for p in re.split(r"[,;\n/]+", text) if p.strip()]
+    parts = [p.strip() for p in re.split(r"\|\|\|+|[,;\n/]+", text) if p.strip()]
     if not parts:
         parts = [text]
 
@@ -670,6 +746,429 @@ def _dis_internals_to_kobo_labels(internals_joined: str) -> str:
     return MULTISELECT_SEP.join(out_labs)
 
 
+# ── Valores «name» del XForm (listas ba5sv11, wa2rt84, lz0xa74, hv3md33, tm2ys89, …) ─────
+# Tras aplicar reglas con etiquetas legibles en español, convertimos a los nombres que
+# Enketo/Kobo guarda en el XML (relevance y selects correctos).
+
+SERVICIO_CANONICO_TO_XML: dict[str, str] = {
+    "Medicina General": "1",
+    "Dental": "2",
+    "Fisioterapia": "3",
+    "Oftalmología": "4",
+    "Laboratorios": "laboratorios",
+}
+
+# Lista wa2rt84 (ASESPREV): códigos distintos a «Servicio que se brinda» (p. ej. Oftalmología=0).
+ASESPREV_CANONICO_TO_XML: dict[str, str] = {
+    "Medicina General": "1",
+    "Oftalmología": "0",
+    "Dental": "2",
+    "Fisioterapia": "3",
+    "Laboratorios": "laboratorios",
+    "No Aplica": "4",
+}
+
+DIS_KOBO_LABEL_TO_XML: dict[str, str] = {
+    "Motriz": "1",
+    "Visual": "2",
+    "Auditiva": "3",
+    "Intelectual": "4",
+    "Otra": "5",
+}
+
+SEX_KOBO_LABEL_TO_XML: dict[str, str] = {
+    "Masculino": "1",
+    "Femenino": "2",
+    "Otro": "3",
+    "Prefiero no responder": "4",
+}
+
+ME_ML_KOBO_LABEL_TO_XML: dict[str, str] = {
+    "Embarazada": "1",
+    "Lactancia": "2_1",
+    "No Aplica": "0",
+}
+
+# Nacionalidad instance('ez8oh48')
+NAT_KOBO_LABEL_TO_XML: dict[str, str] = {
+    "Afganistán": "21",
+    "Argentina": "18",
+    "Bolivia": "20",
+    "Brasil": "4",
+    "Chile": "7",
+    "Colombia": "12",
+    "Cuba": "9",
+    "Ecuador": "11",
+    "El Salvador": "5",
+    "Estados Unidos": "16",
+    "Guatemala": "6",
+    "Haití": "3",
+    "Honduras": "2",
+    "México": "1",
+    "Mexico": "1",
+    "Nicaragua": "10",
+    "Panamá": "15",
+    "Perú": "13",
+    "Venezuela": "8",
+    "Otro": "14",
+    "Extranjero": "14",
+}
+
+# Estado del paciente instance('ed37s62') — etiqueta del XML → name
+ESTADO_PACIENTE_LABEL_TO_XML: dict[str, str] = {
+    "Aguascalientes": "1",
+    "Baja California": "2",
+    "Baja California Sur": "3",
+    "Campeche": "4",
+    "Chiapas": "5",
+    "Chihuahua": "6",
+    "CDMX": "7",
+    "Ciudad de México": "7",
+    "Coahuila": "8",
+    "Colima": "9",
+    "Durango": "10",
+    "Guanajuato": "11",
+    "Guerrero": "12",
+    "Hidalgo": "13",
+    "Jalisco": "14",
+    "Estado de México": "15",
+    "Michoacán de Ocampo": "16",
+    "Michoacán": "16",
+    "Morelos": "17",
+    "Nayarit": "18",
+    "Nuevo León": "19",
+    "Oaxaca": "20",
+    "Puebla": "21",
+    "Querétaro": "22",
+    "Quintana Roo": "23",
+    "San Luis Potosí": "24",
+    "Sinaloa": "25",
+    "Sonora": "26",
+    "Tabasco": "27",
+    "Tamaulipas": "28",
+    "Tlaxcala": "29",
+    "Veracruz": "30",
+    "Yucatán": "31",
+    "Zacatecas": "32",
+}
+
+# Estatus migratorio instance('nc4qo61')
+ESTATUS_MIGRA_LABEL_TO_XML: dict[str, str] = {
+    "Ciudadano Mexicano": "ciudadano_mexicano",
+    "En tránsito (se encuentra en movimiento hacia su destino final y aún no ha establecido residencia en México)": "1",
+    "Retornado (ha regresado a México después de haber salido, ya sea de forma voluntaria o a través de programas de retorno)": "2",
+    "Solicitante de asilo (ha solicitado protección internacional y su estatus está en trámite)": "3",
+    "Refugiado (ha sido reconocido formalmente como refugiado)": "4",
+    "Residente temporal (tiene permiso de residencia en México por un periodo limitado)": "5",
+    "Residente permanente (tiene estatus de residencia indefinida en México)": "6",
+    "Prefiero no responder": "0",
+}
+
+CGR_KOBO_LABEL_TO_XML: dict[str, str] = {
+    "Cuidador hombre": "1",
+    "Cuidadora mujer": "2",
+    "Ambos": "3",
+    "Ninguno": "0",
+}
+
+REFORG_KOBO_LABEL_TO_XML: dict[str, str] = {
+    "Segundo Nivel de Atención/Especialidad": "segundo_nivel_de_atenci_n_especialidad",
+    "ONG": "2",
+    "Ministerio público": "4",
+    "Clínica": "cl_nica",
+    "Otro": "6",
+}
+
+MEDREF_KOBO_LABEL_TO_XML: dict[str, str] = {
+    "Desnutrición": "1",
+    "Seguimiento embarazo": "2",
+    "Valoración y tratamiento": "3",
+    "PB Neumonía": "4",
+    "Cirugía": "5_1",
+    "Otro": "0",
+}
+
+# «Especifique qué se entrega» instance('ss7ig11')
+ESPECIFIQUE_ENTREGA_LABEL_TO_XML: dict[str, str] = {
+    "Anteojos": "anteojos",
+    "Medicamento/suplemento": "medicamento_suplemento",
+    "Plan de Tratamiento": "plan_de_tratamiento",
+    "Resultados de Laboratorio": "resultados_de_laboratorio",
+    "Otro": "otro",
+}
+
+# Lugares condicionales (radios) → nombres XML por campo
+_LUGAR_BCS_TO_XML: dict[str, str] = {
+    "Santa Rosalía": "1",
+    "Mulege": "2",
+    "Loreto": "3",
+    "Ciudad Constitución": "ciudad_constituci_n",
+    "Vizcaíno": "vizca_no",
+    "Bahía Tortuga": "bah_a_tortuga",
+    "Bahía Asunción": "bah_a_asunci_n",
+    "Punta Abreojos": "punta_abreojos",
+    "La Bucana": "la_bucana",
+    "Otro": "4",
+}
+
+_LUGAR_CHIH_TO_XML: dict[str, str] = {
+    "Ciudad Juárez": "1",
+    "Otro": "2",
+}
+
+_LUGAR_SON_TO_XML: dict[str, str] = {
+    "Ciudad Obregón": "1",
+    "Otro": "2",
+}
+
+_LUGAR_BC_ALTA_TO_XML: dict[str, str] = {
+    "Valle de la Trinidad": "valle_de_la_trinidad",
+    "San Matías": "san_mat_as",
+    "Santa Catalina": "santa_catalina",
+    "Comunidad Kiliwa": "comunidad_kiliwa",
+    "Tijuana": "tijuana",
+    "Otro": "otro",
+}
+
+_LUGAR_NL_TO_XML: dict[str, str] = {
+    "Montemorelos": "valle_de_la_trinidad",
+    "Otro": "otro",
+}
+
+
+def _norm_label_key(s: str) -> str:
+    """Clave estable para buscar en mapas por etiqueta (sin tildes, minúsculas)."""
+    return _norm_str(str(s or "").strip())
+
+
+def _map_by_label_or_norm(label: str, table: dict[str, str], table_norm: dict[str, str]) -> str:
+    """Resuelve etiqueta → value XML usando tabla exacta y tabla normalizada."""
+    raw = str(label or "").strip()
+    if not raw:
+        return ""
+    if raw in table:
+        return table[raw]
+    n = _norm_label_key(raw)
+    if n in table_norm:
+        return table_norm[n]
+    # coincidencia parcial suave (solo si una clave normalizada está contenida)
+    for kn, v in table_norm.items():
+        if kn and len(kn) > 3 and (kn in n or n in kn):
+            return v
+    return raw
+
+
+def _build_norm_lookup(exact: dict[str, str]) -> dict[str, str]:
+    return {_norm_label_key(k): v for k, v in exact.items()}
+
+
+_NAT_XML_NORM = _build_norm_lookup(NAT_KOBO_LABEL_TO_XML)
+_ESTADO_PAC_XML_NORM = _build_norm_lookup(ESTADO_PACIENTE_LABEL_TO_XML)
+_ESTATUS_XML_NORM = _build_norm_lookup(ESTATUS_MIGRA_LABEL_TO_XML)
+_CGR_XML_NORM = _build_norm_lookup(CGR_KOBO_LABEL_TO_XML)
+_REFORG_XML_NORM = _build_norm_lookup(REFORG_KOBO_LABEL_TO_XML)
+_MEDREF_XML_NORM = _build_norm_lookup(MEDREF_KOBO_LABEL_TO_XML)
+_ESPEC_ENT_XML_NORM = _build_norm_lookup(ESPECIFIQUE_ENTREGA_LABEL_TO_XML)
+_BCS_XML_NORM = _build_norm_lookup(_LUGAR_BCS_TO_XML)
+_CHIH_XML_NORM = _build_norm_lookup(_LUGAR_CHIH_TO_XML)
+_SON_XML_NORM = _build_norm_lookup(_LUGAR_SON_TO_XML)
+_BC_ALTA_XML_NORM = _build_norm_lookup(_LUGAR_BC_ALTA_TO_XML)
+_NL_XML_NORM = _build_norm_lookup(_LUGAR_NL_TO_XML)
+_DIS_XML_NORM = _build_norm_lookup(DIS_KOBO_LABEL_TO_XML)
+_SEX_XML_NORM = _build_norm_lookup(SEX_KOBO_LABEL_TO_XML)
+
+
+def _si_display_to_yes_no(val: str) -> str:
+    """Selects con itemset Yes/No (ik9rh62, eg97t58, ra4mh79, fy3qc38): Si/Sí → Yes."""
+    raw = str(val or "").strip()
+    if not raw:
+        return raw
+    if raw in ("Yes", "No"):
+        return raw
+    p = _parse_si_no(raw)
+    if p == "1":
+        return "Yes"
+    if p == "0":
+        return "No"
+    low = raw.lower().replace("sí", "si")
+    if low in ("si", "s", "yes", "y"):
+        return "Yes"
+    if low in ("no", "n"):
+        return "No"
+    return raw
+
+
+def _cons_verbal_to_xml(val: str) -> str:
+    """CONS instance cz0vk20: Sí → 1, No → 0."""
+    raw = str(val or "").strip()
+    if raw in ("1", "0"):
+        return raw
+    p = _parse_si_no(raw)
+    if p == "1":
+        return "1"
+    if p == "0":
+        return "0"
+    low = raw.lower().replace("sí", "si")
+    if low in ("si", "s"):
+        return "1"
+    if low in ("no", "n"):
+        return "0"
+    return raw
+
+
+def _minority_flag_to_xml(val: str) -> str:
+    """_Pertenece_a_alguna_minoría: ws2rc98 usa name si / no (minúsculas)."""
+    raw = str(val or "").strip()
+    if raw in ("si", "no"):
+        return raw
+    if raw == "1":
+        return "si"
+    if raw == "0":
+        return "no"
+    p = _parse_si_no(raw)
+    if p == "1":
+        return "si"
+    if p == "0":
+        return "no"
+    return raw
+
+
+def _finalize_enketo_xml_values(out: dict[str, str]) -> None:
+    """
+    Convierte etiquetas españolas / valores intermedios a los «name» del XForm
+    esperados por la API (mismo valor que guarda ODK en el XML).
+    """
+    # Servicio que se brinda (ba5sv11)
+    s = str(out.get("Servicio_que_se_brinda", "")).strip()
+    if s and s not in SERVICIO_CANONICO_TO_XML.values():
+        out["Servicio_que_se_brinda"] = SERVICIO_CANONICO_TO_XML.get(s, s)
+
+    # ASESPREV multiselect (wa2rt84)
+    ap = str(out.get("ASESPREV", "")).strip()
+    if ap and "|||" in ap:
+        chunks: list[str] = []
+        for part in ap.split("|||"):
+            p = str(part).strip()
+            if not p:
+                continue
+            chunks.append(ASESPREV_CANONICO_TO_XML.get(p, p))
+        out["ASESPREV"] = "|||".join(chunks)
+    elif ap:
+        out["ASESPREV"] = ASESPREV_CANONICO_TO_XML.get(ap, ap)
+
+    # DIS (lz0xa74)
+    dis = str(out.get("DIS", "")).strip()
+    if dis:
+
+        def _dis_one(part: str) -> str:
+            part = part.strip()
+            if not part:
+                return ""
+            if part in DIS_KOBO_LABEL_TO_XML.values():
+                return part
+            return _map_by_label_or_norm(part, DIS_KOBO_LABEL_TO_XML, _DIS_XML_NORM)
+
+        if "|||" in dis:
+            out["DIS"] = "|||".join(_dis_one(x) for x in dis.split("|||") if str(x).strip())
+        else:
+            out["DIS"] = _dis_one(dis)
+
+    # SEX (hv3md33)
+    sx = str(out.get("SEX", "")).strip()
+    if sx:
+        if len(sx) == 1 and sx in "1234":
+            pass  # ya es valor XML
+        elif sx in SEX_KOBO_LABEL_TO_XML.values():
+            pass
+        else:
+            out["SEX"] = _map_by_label_or_norm(sx, SEX_KOBO_LABEL_TO_XML, _SEX_XML_NORM)
+
+    # CONS verbal (cz0vk20)
+    if "CONS" in out:
+        out["CONS"] = _cons_verbal_to_xml(str(out["CONS"]))
+
+    # ME_ML (tm2ys89)
+    if out.get("ME_ML"):
+        ml = str(out["ME_ML"]).strip()
+        if ml not in ME_ML_KOBO_LABEL_TO_XML.values():
+            out["ME_ML"] = ME_ML_KOBO_LABEL_TO_XML.get(ml, ml)
+
+    # NAT (ez8oh48)
+    if out.get("NAT"):
+        nat = str(out["NAT"]).strip()
+        if nat not in NAT_KOBO_LABEL_TO_XML.values():
+            out["NAT"] = _map_by_label_or_norm(nat, NAT_KOBO_LABEL_TO_XML, _NAT_XML_NORM)
+
+    # Minoría étnica (ws2rc98)
+    if "_Pertenece_a_alguna_minor_a_t" in out:
+        out["_Pertenece_a_alguna_minor_a_t"] = _minority_flag_to_xml(
+            str(out["_Pertenece_a_alguna_minor_a_t"])
+        )
+
+    # entrega_tx, REF, anteojos, procedimiento odon → Yes/No
+    for k in ("entrega_tx", "REF", "_Requiere_anteojos", "_Se_realiza_procedimiento_odon"):
+        if k in out and str(out[k]).strip():
+            out[k] = _si_display_to_yes_no(str(out[k]))
+
+    # Estado del paciente (ed37s62)
+    if out.get("Estado"):
+        e = str(out["Estado"]).strip()
+        if e not in ESTADO_PACIENTE_LABEL_TO_XML.values():
+            out["Estado"] = _map_by_label_or_norm(e, ESTADO_PACIENTE_LABEL_TO_XML, _ESTADO_PAC_XML_NORM)
+
+    # Estatus migratorio
+    if out.get("estatus_migra"):
+        em = str(out["estatus_migra"]).strip()
+        if em not in ESTATUS_MIGRA_LABEL_TO_XML.values():
+            out["estatus_migra"] = _map_by_label_or_norm(em, ESTATUS_MIGRA_LABEL_TO_XML, _ESTATUS_XML_NORM)
+
+    # CGR
+    if out.get("CGR"):
+        cgr = str(out["CGR"]).strip()
+        if cgr not in CGR_KOBO_LABEL_TO_XML.values():
+            out["CGR"] = _map_by_label_or_norm(cgr, CGR_KOBO_LABEL_TO_XML, _CGR_XML_NORM)
+
+    # Referencias
+    if out.get("REFORG"):
+        r = str(out["REFORG"]).strip()
+        if r not in REFORG_KOBO_LABEL_TO_XML.values():
+            out["REFORG"] = _map_by_label_or_norm(r, REFORG_KOBO_LABEL_TO_XML, _REFORG_XML_NORM)
+    if out.get("MEDREF"):
+        m = str(out["MEDREF"]).strip()
+        if m not in MEDREF_KOBO_LABEL_TO_XML.values():
+            out["MEDREF"] = _map_by_label_or_norm(m, MEDREF_KOBO_LABEL_TO_XML, _MEDREF_XML_NORM)
+
+    # Tipo de entrega (ss7ig11)
+    if out.get("Especifique_qu_se_entrega"):
+        ee = str(out["Especifique_qu_se_entrega"]).strip()
+        if ee not in ESPECIFIQUE_ENTREGA_LABEL_TO_XML.values():
+            out["Especifique_qu_se_entrega"] = _map_by_label_or_norm(
+                ee, ESPECIFIQUE_ENTREGA_LABEL_TO_XML, _ESPEC_ENT_XML_NORM
+            )
+
+    # Lugares por estado (radios condicionales)
+    if out.get("BCS"):
+        v = str(out["BCS"]).strip()
+        if v not in _LUGAR_BCS_TO_XML.values():
+            out["BCS"] = _map_by_label_or_norm(v, _LUGAR_BCS_TO_XML, _BCS_XML_NORM)
+    if out.get("CHIH"):
+        v = str(out["CHIH"]).strip()
+        if v not in _LUGAR_CHIH_TO_XML.values():
+            out["CHIH"] = _map_by_label_or_norm(v, _LUGAR_CHIH_TO_XML, _CHIH_XML_NORM)
+    if out.get("Lugar_de_Atenci_n_Sonora"):
+        v = str(out["Lugar_de_Atenci_n_Sonora"]).strip()
+        if v not in _LUGAR_SON_TO_XML.values():
+            out["Lugar_de_Atenci_n_Sonora"] = _map_by_label_or_norm(v, _LUGAR_SON_TO_XML, _SON_XML_NORM)
+    if out.get("Lugar_de_Atenci_n_Baja_Califo"):
+        v = str(out["Lugar_de_Atenci_n_Baja_Califo"]).strip()
+        if v not in _LUGAR_BC_ALTA_TO_XML.values():
+            out["Lugar_de_Atenci_n_Baja_Califo"] = _map_by_label_or_norm(v, _LUGAR_BC_ALTA_TO_XML, _BC_ALTA_XML_NORM)
+    if out.get("Lugar_de_Atenci_n_Nuevo_Le_n"):
+        v = str(out["Lugar_de_Atenci_n_Nuevo_Le_n"]).strip()
+        if v not in _LUGAR_NL_TO_XML.values():
+            out["Lugar_de_Atenci_n_Nuevo_Le_n"] = _map_by_label_or_norm(v, _LUGAR_NL_TO_XML, _NL_XML_NORM)
+
+
 # Diagnóstico fisioterapia: API Kobo 0/1 (columnas Diagnóstico/… o texto libre)
 FISIO_BIN_KEYS: tuple[str, ...] = (
     "FISIO_Revision",
@@ -684,12 +1183,227 @@ FISIO_BIN_KEYS: tuple[str, ...] = (
     "FISIO_Otro",
 )
 
+# Localización lesión (group_mi31k30) y binarios API/export para otros módulos
+LOC_BIN_KEYS: tuple[str, ...] = (
+    "LOC_Cabeza",
+    "LOC_Cuello",
+    "LOC_Torax",
+    "LOC_Abdomen",
+    "LOC_Cadera",
+    "LOC_MSI",
+    "LOC_MSD",
+    "LOC_MII",
+    "LOC_MID",
+    "LOC_Espalda",
+    "LOC_Otro",
+)
+
+_LOC_TEXT_TO_BIN: dict[str, str] = {
+    "cabeza": "LOC_Cabeza",
+    "cuello": "LOC_Cuello",
+    "torax": "LOC_Torax",
+    "tórax": "LOC_Torax",
+    "abdomen": "LOC_Abdomen",
+    "cadera": "LOC_Cadera",
+    "miembro superior izquierdo": "LOC_MSI",
+    "miembro superior derecho": "LOC_MSD",
+    "miembro inferior izquierdo": "LOC_MII",
+    "miembro inferior derecho": "LOC_MID",
+    "espalda": "LOC_Espalda",
+    "otro": "LOC_Otro",
+}
+
+
+def _strip_acc_lower(s: str) -> str:
+    t = unicodedata.normalize("NFD", (s or "").lower().strip())
+    return "".join(c for c in t if unicodedata.category(c) != "Mn")
+
+
+def _apply_localizacion_lesion_desde_texto(record: dict, out: dict) -> None:
+    raw = str(
+        _pick_first(
+            record,
+            [
+                "Localizaci_n_de_la_lesi_n",
+                "Localización de la lesión",
+                "Localizacion de la lesion",
+            ],
+        )
+        or ""
+    ).strip()
+    if not raw:
+        return
+    key = _strip_acc_lower(raw)
+    target = ""
+    best = 0
+    for lbl, bin_key in _LOC_TEXT_TO_BIN.items():
+        sl = _strip_acc_lower(lbl)
+        if not sl:
+            continue
+        if sl in key or key in sl or key == sl:
+            if len(sl) > best:
+                target = bin_key
+                best = len(sl)
+    if not target:
+        return
+    for lk in LOC_BIN_KEYS:
+        out[lk] = "1" if lk == target else "0"
+    esp = str(record.get("Especificar_001", "")).strip()
+    if esp:
+        out["Especificar_001"] = esp
+
+
+DENT_BIN_KEYS: tuple[str, ...] = (
+    "DENT_Revision_rutina",
+    "DENT_Caries",
+    "DENT_Calculo",
+    "DENT_Sarro",
+    "DENT_Gingivitis",
+    "DENT_Periodontitis",
+    "DENT_Pulpitis_reversible",
+    "DENT_Pulpitis_irreversible",
+    "DENT_Fractura",
+    "DENT_Filtracion",
+    "DENT_Desgaste",
+    "DENT_Infeccion",
+    "DENT_Otro",
+)
+PROC_BIN_KEYS: tuple[str, ...] = (
+    "PROC_Resina",
+    "PROC_Limpieza_dental",
+    "PROC_Endodoncia",
+    "PROC_Extraccion",
+    "PROC_Cirugia",
+    "PROC_Presion_arterial",
+    "PROC_RX",
+    "PROC_Ortodoncia",
+    "PROC_Protesis",
+    "PROC_Fluor",
+    "PROC_Eugenol",
+    "PROC_Toma_impresion",
+    "PROC_Chalazion",
+    "PROC_Dilatacion_pupila",
+    "PROC_Otro",
+)
+ESPEC_ENT_BIN_KEYS: tuple[str, ...] = (
+    "ESPEC_ENT_Med_sup",
+    "ESPEC_ENT_Anteojos",
+    "ESPEC_ENT_Plan",
+    "ESPEC_ENT_WASH",
+    "ESPEC_ENT_Higiene_dental",
+    "ESPEC_ENT_Lab",
+    "ESPEC_ENT_Otro",
+)
+SUP_BIN_KEYS: tuple[str, ...] = ("SUP_Hierro", "SUP_Acido_folico")
+OFT_SX_BIN_KEYS: tuple[str, ...] = (
+    "OFT_SX_Ninguno",
+    "OFT_SX_Ardor",
+    "OFT_SX_Comezon",
+    "OFT_SX_Irritacion",
+    "OFT_SX_Lagrimeo",
+    "OFT_SX_Fotofobia",
+    "OFT_SX_Dif_leer",
+    "OFT_SX_Dism_vision",
+    "OFT_SX_Vista_cansada",
+    "OFT_SX_Dolor",
+    "OFT_SX_Vision_borrosa",
+    "OFT_SX_Otro",
+)
+OFT_PREV_BIN_KEYS: tuple[str, ...] = (
+    "OFT_PREV_Ninguno",
+    "OFT_PREV_Catarata",
+    "OFT_PREV_Glaucoma",
+    "OFT_PREV_Estrabismo",
+    "OFT_PREV_Retinopatia",
+    "OFT_PREV_Pterigion",
+    "OFT_PREV_Presbicia",
+    "OFT_PREV_Otro",
+)
+OFT_ACT_BIN_KEYS: tuple[str, ...] = (
+    "OFT_ACT_Revision",
+    "OFT_ACT_Conjuntivitis",
+    "OFT_ACT_Ametropia",
+    "OFT_ACT_Miopia",
+    "OFT_ACT_Astigmatismo",
+    "OFT_ACT_Hipermetropia",
+    "OFT_ACT_Presbicia",
+    "OFT_ACT_Estrabismo",
+    "OFT_ACT_Cataratas",
+    "OFT_ACT_Glaucoma",
+    "OFT_ACT_Pterigion",
+    "OFT_ACT_Ojo_seco",
+    "OFT_ACT_Otro",
+)
+# Etiquetas del multiselect «Síntomas…» (mismo estilo que OFT_SINTOMAS_DEFAULT).
+OFT_SX_TO_LABEL: dict[str, str] = {
+    "OFT_SX_Ardor": "Ardor",
+    "OFT_SX_Comezon": "Comezón",
+    "OFT_SX_Irritacion": "Irritación",
+    "OFT_SX_Lagrimeo": "Lagrimeo",
+    "OFT_SX_Fotofobia": "Fotofobia",
+    "OFT_SX_Dif_leer": "Dificultad para leer",
+    "OFT_SX_Dism_vision": "Disminución de visión",
+    "OFT_SX_Vista_cansada": "Vista cansada",
+    "OFT_SX_Dolor": "Dolor",
+    "OFT_SX_Vision_borrosa": "Visión borrosa",
+    "OFT_SX_Otro": "Otro",
+}
+# Mismas etiquetas que OFT_DX_ACTUAL_OPTIONS (evita dependencia de orden en el archivo).
+_OFT_DX_ACTUAL_LABELS = frozenset({
+    "Ametropía",
+    "Miopía",
+    "Astigmatismo",
+    "Hipermetropía",
+    "Estabismo",
+    "Otro",
+})
+
 
 def _fisio_cell_to_01(v: object) -> str:
     t = str(v or "").strip().lower()
     if t in ("1", "sí", "si", "yes", "y", "true", "x", "s"):
         return "1"
     return "0"
+
+
+def _passthrough_binarios_desde_record(
+    out: dict[str, str],
+    record: dict[str, str],
+    keys: tuple[str, ...],
+) -> None:
+    """Copia 0/1 desde columnas tipo export API solo si la clave existe en el registro (no afecta Excels sin esas columnas)."""
+    for k in keys:
+        if k not in record:
+            continue
+        v = str(record.get(k, "")).strip()
+        if v == "":
+            continue
+        out[k] = _fisio_cell_to_01(record[k])
+
+
+def _oft_sintomas_multiselect_desde_record(record: dict[str, str]) -> str | None:
+    """
+    Si el Excel trae columnas OFT_SX_* (plantilla/demo API), arma S_ntomas_que_presenta_a_la_fec.
+    Si no hay esas columnas, devuelve None y se conserva el default histórico (OFT_SINTOMAS_DEFAULT).
+    """
+    if not any(
+        k in record and str(record.get(k, "")).strip() != ""
+        for k in OFT_SX_BIN_KEYS
+    ):
+        return None
+    labels: list[str] = []
+    for k in OFT_SX_BIN_KEYS:
+        if k == "OFT_SX_Ninguno":
+            continue
+        if _fisio_cell_to_01(record.get(k)) == "1":
+            lab = OFT_SX_TO_LABEL.get(k)
+            if lab:
+                labels.append(lab)
+    if labels:
+        return MULTISELECT_SEP.join(labels)
+    if _fisio_cell_to_01(record.get("OFT_SX_Ninguno")) == "1":
+        return "Ninguno"
+    return "Ninguno"
 
 
 def _fisio_flags_from_text(dx_text: str) -> set[str]:
@@ -854,8 +1568,8 @@ def _map_diagnosticos(text: str) -> tuple[str, str]:
     matched: list[str] = []
     unmatched: list[str] = []
 
-    # Dividir el texto de entrada por comas, punto y coma, slash o saltos de línea
-    parts = [p.strip() for p in re.split(r"[,;\n/]+", text) if p.strip()]
+    # Dividir por comas/PyC/slash/saltos — y por ||| (misma convención que la hoja y Enketo para multiselect).
+    parts = [p.strip() for p in re.split(r"\|\|\|+|[,;\n/]+", text) if p.strip()]
     if not parts:
         parts = [text]
 
@@ -928,7 +1642,7 @@ def apply_rules(
     _nat = str(record.get("NAT", "")).strip()
     out["NAT"] = _nat or "México"
     _natot = str(record.get("NATOT", "")).strip()
-    if _natot:
+    if _natot and not _is_dis_absent_or_placeholder(_natot):
         out["NATOT"] = _natot
     # Minoría étnica: No por defecto (value="0"). Si viene la especificación
     # con texto, Kobo requiere que el radio quede marcado como "Sí".
@@ -937,7 +1651,7 @@ def apply_rules(
     minoria = _parse_si_no(minoria_raw)
     if not minoria and minoria_raw and minoria_raw.lower() not in ("no", "n", "0", ""):
         minoria = "1"
-    if minoria_especifica:
+    if minoria_especifica and not _is_dis_absent_or_placeholder(minoria_especifica):
         minoria = "1"
     out["_Pertenece_a_alguna_minor_a_t"] = "1" if minoria == "1" else "0"
     out["Especificar_Minor_a_tnica"] = minoria_especifica if minoria == "1" else ""
@@ -1014,13 +1728,17 @@ def apply_rules(
     # Activar cuando el SERVICIO ACTUAL es Oftalmología (no cuando es asesoría previa).
     _servicio_oft = _norm_str(out.get("Servicio_que_se_brinda", ""))
     if "oftalmolog" in _servicio_oft:
-        # 1. Síntomas → seleccionar Ardor, Comezón e Irritación por defecto
-        out["S_ntomas_que_presenta_a_la_fec"] = OFT_SINTOMAS_DEFAULT
+        # 1. Síntomas: plantilla API (OFT_SX_*) si existen columnas; si no, default histórico.
+        _sx_ms = _oft_sintomas_multiselect_desde_record(record)
+        if _sx_ms is not None:
+            out["S_ntomas_que_presenta_a_la_fec"] = _sx_ms
+        else:
+            out["S_ntomas_que_presenta_a_la_fec"] = OFT_SINTOMAS_DEFAULT
 
         # 2. Diagnóstico previo → Ninguno por defecto
         out["_Ha_recibido_alg_n_diagn_stico"] = "Ninguno"
 
-        # 3. Diagnóstico actual → mapear desde el Excel
+        # 3. Diagnóstico actual: Diagnostico_Motivo (Excels clásicos) o columna API Diagn_stico_002
         diagnostico_oft_raw = str(record.get("Diagnostico_Motivo", "")).strip()
         if diagnostico_oft_raw:
             dx_oft, otro_dx = _map_diagnostico_oftalmologia(diagnostico_oft_raw)
@@ -1028,6 +1746,20 @@ def apply_rules(
                 out["Diagn_stico_002"] = dx_oft
             if otro_dx:
                 out["Otro_diagn_stico"] = otro_dx
+        if not out.get("Diagn_stico_002"):
+            d2_api = str(record.get("Diagn_stico_002", "")).strip()
+            if d2_api:
+                dx2, otro2 = _map_diagnostico_oftalmologia(d2_api)
+                if dx2:
+                    out["Diagn_stico_002"] = dx2
+                elif d2_api in _OFT_DX_ACTUAL_LABELS:
+                    out["Diagn_stico_002"] = d2_api
+                else:
+                    out["Diagn_stico_002"] = "Otro"
+                    if not str(out.get("Otro_diagn_stico", "")).strip():
+                        out["Otro_diagn_stico"] = d2_api
+                if otro2 and not str(out.get("Otro_diagn_stico", "")).strip():
+                    out["Otro_diagn_stico"] = otro2
 
         # 4. ¿Requiere anteojos?
         # Prioridad: columna explícita del Excel → detección automática por insumos/tratamiento
@@ -1044,6 +1776,22 @@ def apply_rules(
         if out.get("_Requiere_anteojos") == "Si":
             out["Especifique_qu_se_entrega"] = "Anteojos"
 
+        # 6. Plantilla/export API: binarios OFT y PROC compartidos con odontología
+        _passthrough_binarios_desde_record(out, record, OFT_SX_BIN_KEYS)
+        _passthrough_binarios_desde_record(out, record, OFT_PREV_BIN_KEYS)
+        _passthrough_binarios_desde_record(out, record, OFT_ACT_BIN_KEYS)
+        _passthrough_binarios_desde_record(out, record, PROC_BIN_KEYS)
+
+        _es_nt = str(record.get("Especifique_s_ntoma", "")).strip()
+        if _es_nt:
+            out["Especifique_s_ntoma"] = _es_nt
+        _es_pv = str(record.get("Especifique_diagn_stico_previo", "")).strip()
+        if _es_pv:
+            out["Especifique_diagn_stico_previo"] = _es_pv
+        _ot_dx_u = str(record.get("Otro_diagn_stico", "")).strip()
+        if _ot_dx_u:
+            out["Otro_diagn_stico"] = _ot_dx_u
+
     # ── ODONTOLOGÍA: campos condicionales ────────────────────────────────────
     # Activar cuando el SERVICIO ACTUAL es Dental/Odontología.
     _servicio_dental = _norm_str(out.get("Servicio_que_se_brinda", ""))
@@ -1056,6 +1804,24 @@ def apply_rules(
                 out["Diagn_stico_001"] = dx_dental
             if dx_dental_esp:
                 out["Especificar_002"] = dx_dental_esp
+
+        # 1b. Columna API Diagn_stico_001 (plantilla demo / export) si no hubo Diagnostico_Motivo
+        if not out.get("Diagn_stico_001"):
+            d1_api = str(record.get("Diagn_stico_001", "")).strip()
+            if d1_api:
+                dx1, esp1 = _map_diagnostico_dental(d1_api)
+                if dx1:
+                    out["Diagn_stico_001"] = dx1
+                elif d1_api in DX_DENTAL_OPTIONS:
+                    out["Diagn_stico_001"] = d1_api
+                else:
+                    out["Diagn_stico_001"] = "Otro"
+                if esp1:
+                    prev_e2 = str(out.get("Especificar_002", "")).strip()
+                    out["Especificar_002"] = f"{prev_e2} | {esp1}".strip(" |") if prev_e2 else esp1
+                elif not dx1 and d1_api not in DX_DENTAL_OPTIONS:
+                    prev_e2 = str(out.get("Especificar_002", "")).strip()
+                    out["Especificar_002"] = f"{prev_e2} | {d1_api}".strip(" |") if prev_e2 else d1_api
 
         # 2. ¿Se realiza procedimiento odontológico?
         # Prioridad: columna explícita → inferencia por insumos/referencia → "Si" por defecto
@@ -1087,6 +1853,21 @@ def apply_rules(
                 out["_Qupe_procedimiento_se_realiza"] = proc_val
             if proc_esp:
                 out["Especificar_003"] = proc_esp
+        if not out.get("_Qupe_procedimiento_se_realiza"):
+            qp_col = str(record.get("_Qupe_procedimiento_se_realiza", "")).strip()
+            if qp_col and not _is_dis_absent_or_placeholder(qp_col):
+                proc_val2, proc_esp2 = _map_procedimiento_dental(qp_col)
+                if proc_val2:
+                    out["_Qupe_procedimiento_se_realiza"] = proc_val2
+                if proc_esp2:
+                    pe3 = str(out.get("Especificar_003", "")).strip()
+                    out["Especificar_003"] = f"{pe3} | {proc_esp2}".strip(" |") if pe3 else proc_esp2
+        es3 = str(record.get("Especificar_003", "")).strip()
+        if es3 and not _is_dis_absent_or_placeholder(es3) and not str(out.get("Especificar_003", "")).strip():
+            out["Especificar_003"] = es3
+
+        _passthrough_binarios_desde_record(out, record, DENT_BIN_KEYS)
+        _passthrough_binarios_desde_record(out, record, PROC_BIN_KEYS)
 
     # ── FISIOTERAPIA: Diagnóstico API 0/1 (Diagnóstico/Revisión … /Otro) ───────
     _servicio_fisio = _norm_str(out.get("Servicio_que_se_brinda", ""))
@@ -1106,6 +1887,7 @@ def apply_rules(
                     "Diagnóstico",
                     "Diagnostico_Motivo",
                     "Diagnostico",
+                    "Diagn_stico",
                 ],
             )
             or ""
@@ -1117,6 +1899,23 @@ def apply_rules(
                 out[fk] = _fisio_cell_to_01(vrec)
             else:
                 out[fk] = "1" if fk in flags else "0"
+        loc_txt = str(
+            _pick_first(
+                record,
+                [
+                    "Localizaci_n_de_la_lesi_n",
+                    "Localización de la lesión",
+                    "Localizacion de la lesion",
+                ],
+            )
+            or ""
+        ).strip()
+        if loc_txt:
+            _apply_localizacion_lesion_desde_texto(record, out)
+        else:
+            for lk in LOC_BIN_KEYS:
+                if lk in record and str(record.get(lk, "")).strip() != "":
+                    out[lk] = _fisio_cell_to_01(record[lk])
         if out.get("FISIO_Otro") == "1":
             esp = str(record.get("Especificar", "")).strip() or dx_text
             if esp:
@@ -1173,7 +1972,30 @@ def apply_rules(
 
     out["HEI"] = str(record.get("HEI", "")).strip()
     out["WEI"] = str(record.get("WEI", "")).strip()
-    out["HPI"] = str(record.get("Diagnostico_Motivo", record.get("HPI", ""))).strip()
+    for _meas_key in ("AGEMO", "IMC", "Pesoprepreg", "SDG"):
+        _mv = str(record.get(_meas_key, "")).strip()
+        if _mv:
+            out[_meas_key] = _mv
+    # HPI en Kobo = «Padecimiento médico actual» (mapping.yaml → group_jt9yr10/HPI).
+    # NO usar Diagnostico_Motivo: ese va a DX/dxesp (Diagnósticos de medicina general).
+    out["HPI"] = str(
+        _pick_first(
+            record,
+            [
+                "HPI",
+                "Padecimiento médico actual",
+                "Padecimiento medico actual",
+            ],
+        )
+        or ""
+    ).strip()
+    # Si el texto sólo vino en «Especificar» (Especificar_bare) y no en la columna de padecimiento,
+    # antes quedaba en dxesp y HPI vacío en Kobo (tabla: Especificar lleno, «Padecimiento médico actual» vacío).
+    _svc_hpi = _norm_str(out.get("Servicio_que_se_brinda", "") or "")
+    _mg_for_hpi = ("medicina general" in _svc_hpi) or (not _svc_hpi.strip())
+    _eb_hpi = str(record.get("Especificar_bare", "") or "").strip()
+    if _mg_for_hpi and (not out["HPI"]) and _eb_hpi:
+        out["HPI"] = _eb_hpi
     # Servicio_que_se_brinda ya se establece arriba en el bloque de especialidades
     out["Especificar_lo_que_se_entrega_"] = str(record.get("Resultados_Lab_Insumos", "")).strip()
 
@@ -1194,24 +2016,63 @@ def apply_rules(
             if dis_esp:
                 out["Especificar_discapacidad"] = dis_esp
 
+    # Columna explícita «DIS» (plantilla demo / API) si no se obtuvo de flags ni Discapacidad.
+    if not out.get("DIS"):
+        dis_demo = str(record.get("DIS", "")).strip()
+        if dis_demo:
+            out["DIS"] = dis_demo
+
     # ── DIAGNÓSTICOS (DX) ────────────────────────────────────────────────────
     # Mapear el diagnóstico del Excel a las opciones del formulario.
     # Si está en la lista → marcar ese checkbox; si no → marcar "Otro" + dxesp.
     diagnostico_raw = str(record.get("Diagnostico_Motivo", "")).strip()
+    # Export/plantillas con nombre de columna = clave YAML/API («DX», mapping.yaml).
+    if not diagnostico_raw:
+        diagnostico_raw = str(record.get("DX", "")).strip()
     if diagnostico_raw:
         dx_val, dxesp_val = _map_diagnosticos(diagnostico_raw)
         if dx_val:
             out["DX"] = dx_val
         if dxesp_val:
             out["dxesp"] = dxesp_val
-    # Columna hoja hacia dxesp (nunca usar la clave genérica "Especificar" aquí: en Kobo
-    # resuelve a NATOT / nacionalidad).
+    # Export tipo API («Acumulado»): la celda después de Diagnósticos/MG suele titularse sólo «Especificar»
+    # pero es dxesp («Especificar diagnóstico» en plantilla física); _to_kobo_internal_record → Especificar_bare.
     if "fisioterapia" not in _norm_str(out.get("Servicio_que_se_brinda", "")):
+        _svc_here = _norm_str(out.get("Servicio_que_se_brinda", ""))
+        _mg_like = ("medicina general" in _svc_here) or (not _svc_here.strip())
         explic_mg = str(record.get("dxesp", "") or "").strip()
+        _eb = str(record.get("Especificar_bare", "") or "").strip()
+        if _mg_like and (not explic_mg) and _eb:
+            _hp_here = str(out.get("HPI", "") or "").strip()
+            if (not _hp_here) or (_eb.lower() != _hp_here.lower()):
+                explic_mg = _eb
         if explic_mg and ("Otro" in str(out.get("DX", "")) or not out.get("DX")):
             out["dxesp"] = explic_mg
         if explic_mg and not out.get("DX"):
             out["DX"] = "Otro"
+
+    if str(out.get("DX", "")).strip():
+        out["DX"] = _dx_labels_to_kobo_instance_values(str(out["DX"]))
+
+    # Otra vez «Especificar» sólo en título: odontología/fisio (no Medicina general; ese caso es dxesp arriba).
+    esp_bare_x = str(record.get("Especificar_bare", "") or "").strip()
+    if esp_bare_x:
+        svc_x = _norm_str(out.get("Servicio_que_se_brinda", ""))
+        hp_x = str(out.get("HPI", "") or "").strip()
+        mg_x = ("medicina general" in svc_x) or (not svc_x.strip())
+        if mg_x:
+            pass
+        elif hp_x and esp_bare_x.lower() == hp_x.lower():
+            pass
+        elif "dental" in svc_x or "odontolog" in svc_x:
+            prev_o = str(record.get("Especificar_002", "") or out.get("Especificar_002", "") or "").strip()
+            out["Especificar_002"] = (prev_o + " | " + esp_bare_x).strip(" |") if prev_o else esp_bare_x
+        elif (
+            "fisioterapia" in svc_x
+            and str(out.get("FISIO_Otro", "") or "") == "1"
+        ):
+            fis_esp_x = str(out.get("Especificar", "") or "").strip()
+            out["Especificar"] = (fis_esp_x + " | " + esp_bare_x).strip(" |") if fis_esp_x else esp_bare_x
 
     # ── TRATAMIENTO ──────────────────────────────────────────────────────────
     # Prioridad: columna "Tratamiento" del Excel → "Insumos Entregados" → "Control"
@@ -1280,6 +2141,9 @@ def apply_rules(
 
     # ── LUGAR DE ATENCIÓN ────────────────────────────────────────────────────
     lugar = str(record.get("Lugar", record.get("PLACE", ""))).strip()
+    oth_detail = str(record.get("OTH", "")).strip()
+    if oth_detail and (not lugar or lugar.strip().lower() == "otro"):
+        lugar = oth_detail
 
     estado_brigada = str(record.get("Estado_brigada", "")).strip()
     search_val = estado_brigada or lugar
@@ -1316,11 +2180,15 @@ def apply_rules(
     #   4. Geocodificación automática por nombre de lugar (Nominatim + fallback)
     lat_excel = str(record.get("Latitud", record.get("lat", ""))).strip()
     lon_excel = str(record.get("Longitud", record.get("long", ""))).strip()
+    alt_excel = str(record.get("alt", record.get("Altitud (m)", ""))).strip()
+    acc_excel = str(
+        record.get("acc", record.get("Precisión (m)", record.get("Precision (m)", "")))
+    ).strip()
     lookup_lugar = lugar or estado_brigada
     coords = ""
     coords_source = ""
     if lat_excel and lon_excel:
-        coords = f"{lat_excel} {lon_excel} 0 0"
+        coords = f"{lat_excel} {lon_excel} {alt_excel or '0'} {acc_excel or '0'}"
         coords_source = "record"
     else:
         ubicacion_raw = str(record.get(
@@ -1408,7 +2276,12 @@ def apply_rules(
             "clinica":             "Clínica",
         }
         out["REFORG"] = reforg_map.get(ref_donde, "Clínica")
-        ref_spec = str(record.get("Referencia_especificar", "")).strip()
+        ref_spec = str(
+            record.get(
+                "Referencia_especificar",
+                record.get("REFSPEC", record.get("Nombre o detalle del destino (referencia)", "")),
+            )
+        ).strip()
         if not ref_spec and ("clínica" in ref_donde or "clinica" in ref_donde):
             ref_spec = "Clínica Adventista"
         out["REFSPEC"] = ref_spec or "Clínica Adventista"
@@ -1426,6 +2299,12 @@ def apply_rules(
     elif poc_value != POC_OTRO:
         out["Estado"] = ESTADO_LABEL_FROM_VALUE.get(poc_value, "")
     # Si ninguno disponible, dejar vacío (el formulario lo dejará sin selección)
+
+    # Subcolumnas «Especifique qué se entrega» / suplementos: columnas API/export en plantilla demo
+    _passthrough_binarios_desde_record(out, record, ESPEC_ENT_BIN_KEYS)
+    _passthrough_binarios_desde_record(out, record, SUP_BIN_KEYS)
+
+    _finalize_enketo_xml_values(out)
 
     return {k: v for k, v in out.items() if v is not None and str(v) != ""}
 
@@ -1581,20 +2460,24 @@ def _parse_si_no(s: str) -> str:
 
 
 def _norm_sex(s: str) -> str:
-    """F/M/H/Female/Male/Femenino/Masculino → Femenino/Masculino."""
-    s = str(s or "").strip().upper()
-    if not s:
+    """F/M/… → etiquetas del formulario (luego _finalize_enketo_xml_values → valores XML)."""
+    s0 = str(s or "").strip()
+    if not s0:
         return ""
-    # Femenino — lista explícita sin condiciones genéricas
+    s = s0.upper()
     if s in ("F", "FEMALE", "FEMENINO", "MUJER", "FEM", "FEMENI"):
         return "Femenino"
     if "FEMENIN" in s or "MUJER" in s or "FEMALE" in s:
         return "Femenino"
-    # Masculino — lista explícita sin condiciones genéricas
     if s in ("M", "MALE", "MASCULINO", "HOMBRE", "MASC", "H"):
         return "Masculino"
     if "MASCULIN" in s or "HOMBRE" in s or "MALE" in s:
         return "Masculino"
+    n = _norm_str(s0)
+    if n in ("otro", "otra", "x", "no binario", "nobinario"):
+        return "Otro"
+    if "prefiero" in n or "no respond" in n or n in ("indeterminado", "se omitio", "se omitió"):
+        return "Prefiero no responder"
     return ""
 
 

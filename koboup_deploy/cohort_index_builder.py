@@ -101,6 +101,9 @@ def _iter_data_paths() -> Iterator[Path]:
         for p in sorted(PRIORITY_VALIDATED_DIR.iterdir(), key=lambda x: x.name.lower()):
             if not p.is_file():
                 continue
+            # Archivos sólo de demostración (p. ej. DEMO_Columnas_API_Kobo.xlsx)
+            if p.name.upper().startswith("DEMO_"):
+                continue
             r = str(p.resolve())
             if p.suffix.lower() not in (".xlsx", ".xls", ".csv") or r in seen:
                 continue

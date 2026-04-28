@@ -6,11 +6,11 @@ import os
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
-ROOT = BASE.parent
 
-# Por defecto coincide con koboup_deploy/server.py; sobreescribir con env PRIORITY_VALIDATED_DIR
-_default = (
-    os.environ.get("PRIORITY_VALIDATED_DIR")
-    or str(ROOT / "Llenado Kobo tools.bak_20260320" / "archivos_validados_20260411_004650")
-)
+# Históricos Excel/CSV *extra* para el índice (además de "validado" en BD vía file_store).
+# En producción, rutas fuera de /opt/koboup (p. ej. otra copia de proyecto) suelen no existir.
+# Opcional: variable de entorno PRIORITY_VALIDATED_DIR
+_default = os.environ.get("PRIORITY_VALIDATED_DIR")
+if not _default:
+    _default = str(BASE / "data" / "priority_validated")
 PRIORITY_VALIDATED_DIR = Path(_default)

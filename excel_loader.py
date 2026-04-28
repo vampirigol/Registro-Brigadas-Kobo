@@ -4,14 +4,37 @@ y transforma a columnas internas usadas por el mapeo KoboToolbox.
 """
 
 import re
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
 
 
+@lru_cache(maxsize=1)
+def _mapping_yaml_internal_keys() -> frozenset[str]:
+    """
+    Claves del lado izquierdo de mapping.yaml (mismo «name» que el formulario XML / API de envío).
+    Permite columnas Excel nombradas exactamente como en el proyecto KoboToolbox.
+    """
+    path = Path(__file__).resolve().parent / "mapping.yaml"
+    if not path.is_file():
+        return frozenset()
+    keys: set[str] = set()
+    key_re = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:")
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = key_re.match(line)
+        if m:
+            keys.add(m.group(1))
+    return frozenset(keys)
+
+
 # Columnas internas (passthrough si el Excel ya las tiene)
 INTERNAL_COLUMNS = {
     "NAME", "Fecha_de_atenci_n", "SEX", "Servicio_que_se_brinda", "Diagnostico_Motivo",
+    "HPI", "dxesp",
     "Motivo_especificar",
     "HEI", "WEI", "Resultados_Lab_Insumos", "ME_ML", "Tratamiento", "Plan_de_Tratamiento",
     "Estado_paciente", "Procedimiento_dental",
@@ -134,7 +157,8 @@ EXCEL_TO_INTERNAL = {
     "Especificar motivo referencia": "Motivo_especificar",
     "Especificar m. ref. fisioterapia": "Motivo_especificar",
     "Motivo_especificar": "Motivo_especificar",
-    "Motivo": "Motivo_referencia",
+    # Columna corta «Motivo» (plantillas): MG/diagnóstico — no confundir con «Motivo referencia» ni «Motivo Ref» más arriba.
+    "Motivo": "Diagnostico_Motivo",
     "Servicio Brindado": "Servicio_que_se_brinda",
     "Especialidad": "Servicio_que_se_brinda",
     "Diagnóstico / Motivo": "Diagnostico_Motivo",
@@ -148,7 +172,7 @@ EXCEL_TO_INTERNAL = {
     "Resultado Laboratorio": "Resultados_Lab_Insumos",
     "Diagnostico Odontología": "Diagnostico_Motivo",
     "Diagnostico Oftalmología": "Diagnostico_Motivo",
-    "Padecimiento actual": "Diagnostico_Motivo",
+    "Padecimiento actual": "HPI",
     "Talla / Peso": "Talla_Peso_raw",  # Se separa en HEI y WEI
     "Talla / peso": "Talla_Peso_raw",
     "Resultados Lab / Insumos": "Resultados_Lab_Insumos",
@@ -181,14 +205,21 @@ EXCEL_TO_INTERNAL = {
     "Edad": "AGE",
     "Talla (cm)": "HEI",
     "Peso (kg)": "WEI",
-    "Padecimiento médico actual": "Diagnostico_Motivo",
+    "Padecimiento médico actual": "HPI",
     "Padecimiento / Motivo": "Diagnostico_Motivo",
     "Padecimiento/ Motivo": "Diagnostico_Motivo",
     "Padecimiento/Motivo": "Diagnostico_Motivo",
     "Motivo de la consulta": "Diagnostico_Motivo",
-    "Motivo": "Diagnostico_Motivo",
     "Diagnósticos": "Diagnostico_Motivo",
     "Diagnosticos": "Diagnostico_Motivo",
+    # Equivale en export tipo API a una columna que sólo se llama «Especificar» tras «Diagnósticos»
+    "Especificar diagnóstico (Medicina General)": "dxesp",
+    "Especificar diagnostico (Medicina General)": "dxesp",
+    "Especificar diagnóstico Medicina General": "dxesp",
+    "Especificar Diagnóstico Medicina General": "dxesp",
+    "Especificar Diagnostico Medicina General": "dxesp",
+    "Especificar diagnóstico": "dxesp",
+    "dxesp": "dxesp",
     "Entrega trat.": "entrega_tx",
     "Entrega de tratamiento": "entrega_tx",
     "¿Se hizo entrega de tratamiento/artículos al beneficiario o beneficiaria?": "entrega_tx",
@@ -341,6 +372,28 @@ EXCEL_TO_INTERNAL = {
     "Indicar si el paciente tiene alguna de las siguientes discapacidades/Auditiva": "DIS_auditiva",
     "Indicar si el paciente tiene alguna de las siguientes discapacidades/Intelectual": "DIS_intelectual",
     "Indicar si el paciente tiene alguna de las siguientes discapacidades/Otra": "DIS_otra",
+    "Especificar discapacidad": "Especificar_discapacidad",
+    "Edad en meses": "AGEMO",
+    "IMC": "IMC",
+    "Peso pre gestacional (kg)": "Pesoprepreg",
+    "Peso pre gestacional": "Pesoprepreg",
+    "Semanas de gestación": "SDG",
+    "Especificar lugar de atención (Otro)": "OTH",
+    "Especificar Lugar de Atención": "OTH",
+    "Nombre o detalle del destino (referencia)": "Referencia_especificar",
+    "Especificar (destino de referencia)": "Referencia_especificar",
+    "Referencia_especificar": "Referencia_especificar",
+    "Especificar diagnóstico (Odontología)": "Especificar_002",
+    "Especificar procedimiento odontológico": "Especificar_003",
+    "Localización de la lesión": "Localizaci_n_de_la_lesi_n",
+    "Especificar localización de la lesión": "Especificar_001",
+    "Especificar diagnóstico (Fisioterapia)": "Especificar",
+    "Especificar (fisioterapia)": "Especificar",
+    "Especifique síntoma (oftalmología)": "Especifique_s_ntoma",
+    "Especifique diagnóstico previo (oftalmología)": "Especifique_diagn_stico_previo",
+    "Otro diagnóstico (oftalmología actual)": "Otro_diagn_stico",
+    "¿Requiere anteojos?": "_Requiere_anteojos",
+    "Requiere anteojos": "_Requiere_anteojos",
     "Latitud": "lat",
     "Longitud": "long",
     "Altitud (m)": "alt",
@@ -392,7 +445,9 @@ OUTPUT_COLUMNS = [
     "Modalidad_de_la_atenci_n",
     "SCH",
     "Servicio_que_se_brinda",
+    "HPI",
     "Diagnostico_Motivo",
+    "dxesp",
     "HEI",
     "WEI",
     "Resultados_Lab_Insumos",
@@ -558,6 +613,8 @@ def load_excel_to_records(
             )
             if internal is None and col_stripped in INTERNAL_COLUMNS:
                 internal = col_stripped
+            if internal is None and col_stripped in _mapping_yaml_internal_keys():
+                internal = col_stripped
             if internal is None:
                 continue
 
@@ -581,9 +638,12 @@ def load_excel_to_records(
                     if not rec.get("Diagnostico_Motivo"):
                         rec["Diagnostico_Motivo"] = value
             elif internal == "Talla_Peso_raw":
-                hei, wei = _split_talla_peso(value)
-                rec["HEI"] = hei
-                rec["WEI"] = wei
+                # No borrar HEI/WEI ya cargados desde «Talla (cm)» / «Peso (kg)»
+                # si esta celda combinada va vacía (orden de columnas variable en Excel).
+                if str(value or "").strip():
+                    hei, wei = _split_talla_peso(value)
+                    rec["HEI"] = hei
+                    rec["WEI"] = wei
             elif internal == "HEI":
                 rec["HEI"] = str(value).replace(",", ".") if value else ""
             elif internal == "WEI":
@@ -751,7 +811,17 @@ def validate_records(records: list[dict[str, str]]) -> dict:
         if fecha_val and not _is_empty(fecha_val) and not re.match(r"^\d{4}-\d{2}-\d{2}$", fecha_val):
             row_warnings.append(f"Fecha atención '{fecha_val}' no está en formato YYYY-MM-DD")
 
-        missing_rec = [f for f in recommended if _is_empty(str(rec.get(f, "")).strip())]
+        diag_ok = (
+            not _is_empty(str(rec.get("Diagnostico_Motivo", "")).strip())
+            or not _is_empty(str(rec.get("DX", "")).strip())
+        )
+        missing_rec = []
+        for f in recommended:
+            if f == "Diagnostico_Motivo":
+                if not diag_ok:
+                    missing_rec.append(f)
+            elif _is_empty(str(rec.get(f, "")).strip()):
+                missing_rec.append(f)
 
         if row_errors:
             errors.append({"fila": row, "mensaje": "; ".join(row_errors)})

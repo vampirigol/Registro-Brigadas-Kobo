@@ -1880,6 +1880,14 @@ svg.pf-icon.pf-error { color: var(--red); }
   color: var(--text-2);
   margin-top: 0.25rem;
 }
+.sheet-check-grid-hint {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-2, #475569);
+  border-left: 3px solid #ea580c;
+  padding-left: 0.6rem;
+  margin-top: 0.35rem;
+}
 .sheet-check-advanced {
   margin-top: 0.45rem;
   border-top: 1px dashed rgba(148, 163, 184, 0.45);
@@ -2010,6 +2018,15 @@ svg.pf-icon.pf-error { color: var(--red); }
   vertical-align: middle;
   white-space: nowrap;
 }
+.sheet-table td.sheet-td-invalid {
+  outline: 2px solid #ea580c;
+  outline-offset: -2px;
+  background: rgba(255, 237, 213, 0.88) !important;
+  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.28);
+}
+.sheet-table td.sheet-td-invalid .sheet-cell {
+  border-color: transparent !important;
+}
 .sheet-table th {
   position: sticky;
   top: 0;
@@ -2086,6 +2103,21 @@ svg.pf-icon.pf-error { color: var(--red); }
   background: #f1f5f9 !important;
   color: #94a3b8 !important;
   cursor: not-allowed;
+}
+/* Celdas marcadas por el asistente (fuera de catálogo, fecha, etc.) */
+.sheet-cell-invalid {
+  border: 2px solid #ea580c !important;
+  border-radius: 4px;
+  background: #fff7ed !important;
+  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.2);
+}
+.sheet-cell-invalid:focus {
+  border-color: #c2410c !important;
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.28);
+}
+.sheet-table td.sheet-td-invalid .sheet-cell-invalid:focus {
+  border-color: var(--accent, #3b82f6) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 /* Tratamiento sin dosis o vacío: fila con aviso visual */
 .sheet-table tbody tr.sheet-row-tto-warn {
